@@ -563,14 +563,31 @@
         .log-line.danger { color: #f0a030; }
 
         .trace-container {
-            padding: 12px 16px;
-            background-color: rgba(255,255,255,0.02);
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+            padding: 16px 0;
+        }
+
+        .trace-step {
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            overflow: hidden;
+            background-color: #0c0d12;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .trace-step-header {
+            padding: 10px 16px;
+            background-color: rgba(28, 130, 173, 0.05);
+            border-bottom: 1px solid var(--border-color);
             display: flex;
             justify-content: space-between;
             align-items: center;
-            font-size: 13.5px;
+            font-size: 13px;
             font-weight: 600;
-            border-bottom: 1px solid var(--border-color);
+            color: var(--info);
         }
 
         .trace-step-body {
