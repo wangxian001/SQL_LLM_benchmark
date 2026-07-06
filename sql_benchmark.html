@@ -1,5 +1,5 @@
-<!-- Version: 2026-07-06T22:56:00+08:00 -->
-<!-- Description: Replicated LLM SQL Benchmark with DuckDB-Wasm. Changed styling, fonts, buttons, cards, and colors to match the original light-mode theme. Allows users to export all round CSV traces as a ZIP along with a summary markdown file. Displays overall accuracy and includes quick instructions. -->
+<!-- Version: 2026-07-06T23:20:00+08:00 -->
+<!-- Description: Replicated LLM SQL Benchmark with DuckDB-Wasm. Changed styling, fonts, buttons, cards, and colors to match the original light-mode theme. Allows users to export all round CSV traces as a ZIP along with a summary markdown file. Displays overall accuracy and includes quick instructions. Automatically saves API endpoint, key, model, and rounds to localStorage upon clicking start benchmark. -->
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -2175,6 +2175,9 @@ First row: ${firstRowStr}`;
                 return;
             }
 
+            // Save config to local storage when benchmark is starting
+            saveConfigsToLocalStorage(endpoint, apiKey, model, totalRounds);
+
             // Verify that we have at least one question selected
             const activeQuestions = questionsList.filter(q => selectedQuestionIds.has(q.id));
             if (activeQuestions.length === 0) {
@@ -3074,9 +3077,63 @@ First row: ${firstRowStr}`;
         // Expose selectQuestion to global scope for table onclick event handlers
         window.selectQuestion = selectQuestion;
 
+        function saveConfigsToLocalStorage(endpoint, apiKey, model, rounds) {
+            const configs = {
+                endpoint: endpoint,
+                key: apiKey,
+                model: model,
+                rounds: rounds
+            };
+            localStorage.setItem('sql_llm_benchmark_saved_configs', JSON.stringify(configs));
+        }
+
+        function loadConfigsFromLocalStorage() {
+            try {
+                const stored = localStorage.getItem('sql_llm_benchmark_saved_configs');
+                if (!stored) return;
+                const configs = JSON.parse(stored);
+                if (configs.endpoint !== undefined) {
+                    document.getElementById('api-endpoint').value = configs.endpoint;
+                }
+                if (configs.key !== undefined) {
+                    document.getElementById('api-key').value = configs.key;
+                }
+                if (configs.rounds !== undefined) {
+                    document.getElementById('api-rounds').value = configs.rounds;
+                }
+                if (configs.model !== undefined && configs.model) {
+                    const selectEl = document.getElementById('api-model');
+                    if (selectEl) {
+                        // Check if the option already exists in the select
+                        let optionExists = false;
+                        for (let i = 0; i < selectEl.options.length; i++) {
+                            if (selectEl.options[i].value === configs.model) {
+                                optionExists = true;
+                                break;
+                            }
+                        }
+                        if (!optionExists) {
+                            // Dynamically append the saved model as option
+                            const opt = document.createElement('option');
+                            opt.value = configs.model;
+                            opt.textContent = configs.model;
+                            selectEl.appendChild(opt);
+                        }
+                        selectEl.value = configs.model;
+                    }
+                }
+            } catch (e) {
+                console.error("Error loading configs from localStorage:", e);
+            }
+        }
+
         // Run DuckDB loader on page load
         window.addEventListener('DOMContentLoaded', () => {
             initDuckDB();
+            
+            // Load saved configs from localStorage
+            loadConfigsFromLocalStorage();
+
             // Set initial tested model name display
             const modelSelect = document.getElementById('api-model');
             const modelDisplay = document.getElementById('current-tested-model');
