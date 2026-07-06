@@ -1030,13 +1030,25 @@
                 conn = await db.connect();
 
                 updateDbStatus("加载数据集 CSV 文件...", "status-yellow");
+
+                // Dynamically resolve base path for subdirectory deployments like GitHub Pages
+                const loc = window.location;
+                let basePath = loc.pathname;
+                if (basePath.endsWith('.html')) {
+                    basePath = basePath.substring(0, basePath.lastIndexOf('/') + 1);
+                } else if (!basePath.endsWith('/')) {
+                    basePath += '/';
+                }
+                const origin = loc.origin;
+
                 for (const name of tableNames) {
-                    const csvPath = `tables/${name}.csv`;
-                    const res = await fetch(csvPath);
-                    if (!res.ok) throw new Error(`无法获取文件 ${csvPath}: ${res.statusText}`);
+                    const csvUrl = `${origin}${basePath}tables/${name}.csv`;
+                    const res = await fetch(csvUrl);
+                    if (!res.ok) throw new Error(`无法获取文件 ${csvUrl}: ${res.statusText}`);
                     const text = await res.text();
-                    await db.registerFileText(csvPath, text);
-                    await conn.query(`CREATE VIEW "${name}" AS SELECT * FROM read_csv_auto('${csvPath}')`);
+                    const vPath = `tables/${name}.csv`;
+                    await db.registerFileText(vPath, text);
+                    await conn.query(`CREATE VIEW "${name}" AS SELECT * FROM read_csv_auto('${vPath}')`);
                 }
 
                 // Retrieve Database Schema
