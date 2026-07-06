@@ -749,6 +749,13 @@
                 </select>
             </div>
             <div class="input-group">
+                <label>测试轮数 (Rounds)</label>
+                <input type="number" id="api-rounds" value="1" min="1" max="100">
+            </div>
+        </div>
+
+        <div class="config-grid" style="margin-top: 4px; border-top: 1px dashed rgba(28, 130, 173, 0.15); padding-top: 16px;">
+            <div class="input-group">
                 <label>Max Tokens (生成长度)</label>
                 <input type="number" id="api-maxtokens" value="2048" min="256" max="8192">
             </div>
@@ -763,10 +770,6 @@
             <div class="input-group">
                 <label>最大重试次数</label>
                 <input type="number" id="api-retries" value="1" min="0" max="5">
-            </div>
-            <div class="input-group">
-                <label>测试轮数 (Rounds)</label>
-                <input type="number" id="api-rounds" value="1" min="1" max="100">
             </div>
         </div>
 
