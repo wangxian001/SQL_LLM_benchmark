@@ -5,7 +5,7 @@
 ---
 
 ## 🚀 GitHub Pages 在线访问地址 (GitHub Pages Service URL)
-**[👉 点击此处在线体验 / Click here to experience online](https://wangxian001.github.io/SQL_LLM_benchmark/sql_benchmark.html)**
+**[👉 点击此处在线体验 / Click here to experience online](https://wangxian001.github.io/SQL_LLM_benchmark/)**
 
 ---
 
@@ -34,7 +34,7 @@ A client-side LLM SQL generation benchmark dashboard utilizing **DuckDB-Wasm** i
 ### 📦 How to Run & Deploy
 1. **Statically via GitHub Pages**:
    - Enable GitHub Pages on your repository (`main` branch root folder).
-   - Go to `https://<your_username>.github.io/SQL_LLM_benchmark/sql_benchmark.html`.
+   - Go to `https://<your_username>.github.io/SQL_LLM_benchmark/`.
 2. **Locally/Privately (Intranet Server)**:
    - Prepare Database Tables: `python download_tables.py`
    - Start Server: `python run_server.py`
@@ -68,7 +68,7 @@ A client-side LLM SQL generation benchmark dashboard utilizing **DuckDB-Wasm** i
 1. **通过 GitHub Pages 静态托管部署**：
    * 将此仓库 Fork 到您的 GitHub 下。
    * 在仓库设置的 **Settings -> Pages** 中，将 Source 设置为 `Deploy from a branch` 并选择 `main` 分支根目录。
-   * 保存后，即可通过 `https://<您的用户名>.github.io/SQL_LLM_benchmark/sql_benchmark.html` 访问静态页面并运行测试。
+   * 保存后，即可通过 `https://<您的用户名>.github.io/SQL_LLM_benchmark/` 访问静态页面并运行测试。
 2. **本地/局域网私有化运行（推荐）**：
    * 确保本地安装了 Python。
    * 首先下载并初始化数据集：`python download_tables.py`
