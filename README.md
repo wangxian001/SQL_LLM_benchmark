@@ -4,10 +4,17 @@
 
 ---
 
-## 🚀 GitHub Pages 在线访问地址 (GitHub Pages Service URL)
-**[👉 点击此处在线体验 / Click here to experience online](https://wangxian001.github.io/SQL_LLM_benchmark/)**
+## 使用方式一： 🚀 GitHub Pages 在线访问地址 (GitHub Pages Service URL)
+**[👉 点击此处运行在线测试 / Click here to experience online](https://wangxian001.github.io/SQL_LLM_benchmark/)**
 
 ---
+---
+
+## 使用方式二： 🚀 GitHub 拉取本仓库代码本地部署 
+**[👉 拉取本仓库代码本地部署 / Click here to local deployment ](https://github.com/wangxian001/SQL_LLM_benchmark)**
+
+---
+
 
 ## English
 
@@ -59,6 +66,8 @@ A client-side LLM SQL generation benchmark dashboard utilizing **DuckDB-Wasm** i
   4. **双模导出与保存**：
      - *服务端运行状态*：本地 Python 服务能实现每轮次自动在服务器存盘 CSV 到 `trace_log/` 目录下。
      - *无服务器/GitHub Pages 静态托管状态*：自动退化到纯前端模式，支持在浏览器内存中实时捕获多轮次的 Trace 细节，并提供 **“导出评测 CSV”** 功能，下载一张包含各轮各题 SQL、耗时、Token 消耗和完整 Trace 的合并大表，十分便于分析。
+  5. **自动统计数据，直观查看多轮测试的数据；自动导出测试过程中的完整会话流程**：
+    
 
 ### 🛠️ 实现原理
 1. **DuckDB-Wasm**：利用浏览器内的 WebAssembly 版 DuckDB 引擎。前端在启动时自动拉取 AdventureWorks 数据集（CSV 文件格式），在用户浏览器本地的虚拟内存中构建关系型数据表，确保 SQL 的运行和检查不经过任何外部服务器。
