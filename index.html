@@ -1,5 +1,5 @@
-<!-- Version: 2026-07-06T14:50:50+08:00 -->
-<!-- Description: Replicated LLM SQL Benchmark with DuckDB-Wasm. Changed styling, fonts, buttons, cards, and colors to match the original light-mode theme. Allows users to export all round CSV traces as a ZIP along with a summary markdown file. -->
+<!-- Version: 2026-07-06T21:45:00+08:00 -->
+<!-- Description: Replicated LLM SQL Benchmark with DuckDB-Wasm. Changed styling, fonts, buttons, cards, and colors to match the original light-mode theme. Allows users to export all round CSV traces as a ZIP along with a summary markdown file. Displays overall accuracy and includes quick instructions. -->
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -711,6 +711,20 @@
             正在初始化 DuckDB...
         </div>
     </header>
+
+    <!-- 简要使用说明 (Quick Start Instructions) -->
+    <section class="config-card" style="margin-bottom: 0px; border-left: 4px solid var(--info); background-color: rgba(28, 130, 173, 0.03); padding: 16px 20px;">
+        <h3 style="margin-top: 0; margin-bottom: 8px; font-size: 14px; color: var(--info); display: flex; align-items: center; gap: 6px; font-family: var(--font-sans);">
+            <svg width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line><line x1="12" y1="8" x2="12.01" y2="8"></line></svg>
+            简要使用说明 (Quick Start Instructions)
+        </h3>
+        <ol style="margin: 0; padding-left: 20px; font-size: 13px; color: var(--text-color); line-height: 1.6; font-family: var(--font-sans);">
+            <li>只需填写：<strong>API 接口地址</strong>（格式如：<code>http://192.168.88.8:8000/openai/deepseek/v1/chat/completions</code>）和 <strong>API 密钥 (API Key)</strong>；</li>
+            <li>点击密钥输入框右侧的<strong>刷新按钮</strong>，在下拉菜单中<strong>选择测试模型</strong>；</li>
+            <li>在参数配置中填写您希望测试的<strong>测试轮数 (Rounds)</strong>，然后点击 <strong>开始测试</strong> 即可；</li>
+            <li>其余所有模型和超时参数<strong>无需修改</strong>，系统已预设与官方默认规则保持一致。</li>
+        </ol>
+    </section>
 
     <section class="config-card">
         <div class="config-grid">
@@ -1867,7 +1881,34 @@ First row: ${firstRowStr}`;
                 `;
             });
             
-            totalRow.innerHTML += '<td style="font-weight: bold; font-size: 13px; color: var(--text-muted); padding-left: 12px; white-space: nowrap; text-align: right;">-</td>';
+            let grandTotalPass = 0;
+            let grandTotalActive = 0;
+            for (let r = 1; r <= totalRounds; r++) {
+                questionsList.forEach(q => {
+                    const isSelected = selectedQuestionIds.has(q.id);
+                    if (isSelected) {
+                        let status = 'pending';
+                        if (r === currentRoundNum) {
+                            if (runResults[q.id]) {
+                                status = runResults[q.id].status;
+                            }
+                        } else if (r < currentRoundNum) {
+                            const rData = multiRoundMatrix.find(item => item.roundNum === r);
+                            if (rData && rData.results) {
+                                status = rData.results[q.id] || 'pending';
+                            }
+                        }
+                        if (status === 'pass' || status === 'fail' || status === 'error') {
+                            grandTotalActive++;
+                            if (status === 'pass') grandTotalPass++;
+                        }
+                    }
+                });
+            }
+            const overallAccuracyStr = grandTotalActive > 0 ? ((grandTotalPass / grandTotalActive) * 100).toFixed(1) + '%' : '-';
+            const overallColor = grandTotalActive > 0 ? 'var(--info)' : 'var(--text-muted)';
+            
+            totalRow.innerHTML += `<td style="font-weight: bold; font-size: 13px; color: ${overallColor}; padding-left: 12px; white-space: nowrap; text-align: right;" title="综合正确率 (所有轮次通过数/已完成测试数)">${overallAccuracyStr}</td>`;
             tbody.appendChild(totalRow);
             table.appendChild(tbody);
             
