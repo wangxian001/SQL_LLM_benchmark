@@ -1,4 +1,4 @@
-<!-- Version: 2026-07-06T21:45:00+08:00 -->
+<!-- Version: 2026-07-06T22:56:00+08:00 -->
 <!-- Description: Replicated LLM SQL Benchmark with DuckDB-Wasm. Changed styling, fonts, buttons, cards, and colors to match the original light-mode theme. Allows users to export all round CSV traces as a ZIP along with a summary markdown file. Displays overall accuracy and includes quick instructions. -->
 <!DOCTYPE html>
 <html lang="zh-CN">
@@ -9,6 +9,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600;700&family=Source+Serif+4:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
         :root {
             --primary: #00337c;
@@ -206,6 +207,17 @@
 
         .btn-danger:hover {
             background-color: #c94f4f;
+            transform: translateY(-1px);
+        }
+
+        .btn-warning {
+            background-color: #f59e0b;
+            color: white;
+            box-shadow: 0 2px 8px rgba(245, 158, 11, 0.15);
+        }
+
+        .btn-warning:hover:not(:disabled) {
+            background-color: #d97706;
             transform: translateY(-1px);
         }
 
@@ -803,9 +815,15 @@
                     <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect></svg>
                     停止测试
                 </button>
+                <button id="btn-pause" class="btn btn-warning" style="display: none;">
+                    <svg id="svg-pause" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+                        <path d="M6 4h4v16H6zM14 4h4v16h-4z"></path>
+                    </svg>
+                    <span id="btn-pause-text">暂停测试</span>
+                </button>
                 <button id="btn-save-trace" class="btn btn-secondary" disabled>
                     <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-                    导出评测 CSV
+                    导出详细测试日志到本地
                 </button>
                 <button id="btn-reset" class="btn btn-secondary">重置所有</button>
             </div>
@@ -1008,12 +1026,15 @@
         let conn = null;
         let dbSchema = {};
         let benchmarkRunning = false;
+        let benchmarkPaused = false;
         let currentQuestionIndex = 0;
         let runResults = {}; // Map of questionId -> result object
         let selectedQuestionId = null;
         let abortController = null;
         let currentRoundNum = 1;
         let currentRoundStartTime = 0;
+        let totalPausedMs = 0;
+        let roundPausedStartTime = 0;
         let inspectorExpanded = false;
         let multiRoundMatrix = []; // Array of round records
         let currentBatchId = 'test_trace_' + new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14); // Unique ID for the current benchmark run session
@@ -1529,7 +1550,7 @@ First row: ${firstRowStr}`;
         async function saveTraceToServer(isManual = false, roundNum = null, totalRounds = null) {
             const results = Object.values(runResults);
             if (results.length === 0) {
-                if (isManual) alert("暂无测试结果可保存！");
+                if (isManual) alert("暂无数据可保存");
                 return;
             }
             
@@ -1588,9 +1609,84 @@ First row: ${firstRowStr}`;
             }
         }
 
-        function exportUnifiedCSV() {
-            if (allRoundsResults.length === 0 && Object.keys(runResults).length === 0) {
-                alert("暂无测试结果可导出！");
+        function generateCSVForRound(roundNum, roundData) {
+            const headers = [
+                "Round (轮次)", "Model Name (模型名称)", "Start Time (开始时间)", "End Time (结束时间)",
+                "Question ID (题号)", "Difficulty (难度)", "Question (题目描述)", 
+                "Status (状态)", "Attempts (尝试次数)", "Input Tokens (输入Tokens)", "Output Tokens (输出Tokens)", 
+                "Expected Row Count (期望行数)", "Actual Row Count (实际行数)",
+                "Expected Column Count (期望列数)", "Actual Column Count (实际列数)",
+                "Generated SQL (生成的SQL)", "Error Message (错误信息)", "Full Dialogue Trace (完整对话轨迹)"
+            ];
+            
+            const rows = [headers];
+            
+            Object.values(roundData).forEach(res => {
+                const q = questionsList.find(item => item.id === res.id);
+                if (!q) return;
+                
+                const check = res.check || {};
+                
+                let traceTextParts = [];
+                if (res.history) {
+                    res.history.forEach((step, sIdx) => {
+                        traceTextParts.push(`--- 回合 ${sIdx + 1} ---`);
+                        const resp = step.response || {};
+                        if (resp.reasoning) {
+                            traceTextParts.push(`[思维链路]\n${resp.reasoning}`);
+                        }
+                        if (resp.toolCall) {
+                            traceTextParts.push(`[工具调用] ${resp.toolCall.name} with args: ${JSON.stringify(resp.toolCall.arguments)}`);
+                        } else if (resp.content) {
+                            traceTextParts.push(`[助手输出]\n${resp.content}`);
+                        }
+                        if (step.result) {
+                            traceTextParts.push(`[执行结果]\n${step.result}`);
+                        } else if (step.error) {
+                            traceTextParts.push(`[执行报错]\n${step.error}`);
+                        }
+                    });
+                }
+                const fullTraceStr = traceTextParts.join("\n\n");
+                
+                const row = [
+                    `Round ${roundNum}`,
+                    benchmarkModelName,
+                    benchmarkStartTime || '-',
+                    benchmarkEndTime || new Date().toLocaleString(),
+                    `Q${res.id}`,
+                    q.difficulty,
+                    q.question,
+                    res.status,
+                    res.attempts || 0,
+                    res.inputTokens || 0,
+                    res.outputTokens || 0,
+                    q.row_count,
+                    check.actualRowCount ?? "",
+                    q.columns.length,
+                    check.actualColumnCount ?? "",
+                    res.generatedSql || "",
+                    res.status === 'error' ? (res.error || (res.check ? res.check.error : '未知错误')) : '',
+                    fullTraceStr
+                ];
+                rows.push(row);
+            });
+            
+            const escapeCSVCell = (val) => {
+                if (val === null || val === undefined) return "";
+                let str = String(val);
+                if (str.includes('"') || str.includes(',') || str.includes('\n') || str.includes('\r')) {
+                    return '"' + str.replace(/"/g, '""') + '"';
+                }
+                return str;
+            };
+            
+            return rows.map(r => r.map(escapeCSVCell).join(",")).join("\r\n");
+        }
+
+        async function exportZipArchive() {
+            if (!currentBatchId) {
+                alert("暂无测试批次，请先开始基准测试！");
                 return;
             }
             
@@ -1603,96 +1699,107 @@ First row: ${firstRowStr}`;
                 }
             }
             
-            // Build CSV rows
-            const headers = [
-                "Round (轮次)", "Model Name (模型名称)", "Start Time (开始时间)", "End Time (结束时间)",
-                "Question ID (题号)", "Difficulty (难度)", "Question (题目描述)", 
-                "Status (状态)", "Attempts (尝试次数)", "Input Tokens (输入Tokens)", "Output Tokens (输出Tokens)", 
-                "Expected Row Count (期望行数)", "Actual Row Count (实际行数)",
-                "Expected Column Count (期望列数)", "Actual Column Count (实际列数)",
-                "Generated SQL (生成的SQL)", "Error Message (错误信息)", "Full Dialogue Trace (完整对话轨迹)"
-            ];
+            if (roundsData.length === 0) {
+                alert("暂无测试数据可导出！");
+                return;
+            }
             
-            const rows = [headers];
+            // Build summary.md markdown content
+            let summaryContent = `# Benchmark Accuracy Summary (基准测试正确率统计汇总)\n\n`;
+            const totalRounds = roundsData.length;
+            const selectedCount = selectedQuestionIds.size;
+            
+            summaryContent += `## Overall Metrics (总体统计)\n`;
+            summaryContent += `- **Batch ID (批次时间戳)**: ${currentBatchId}\n`;
+            summaryContent += `- **Model Name (模型名称)**: ${benchmarkModelName}\n`;
+            summaryContent += `- **Start Time (开始时间)**: ${benchmarkStartTime || '-'}\n`;
+            summaryContent += `- **End Time (结束时间)**: ${benchmarkEndTime || new Date().toLocaleString()}\n`;
+            summaryContent += `- **Total Rounds Run (实际运行轮次)**: ${totalRounds}\n`;
+            summaryContent += `- **Questions Selected per Round (每轮测试题数)**: ${selectedCount}\n\n`;
+            
+            // 2. Round-by-Round Metrics Table
+            summaryContent += `## Round-by-Round Metrics (各轮测试正确率)\n`;
+            summaryContent += `| Round (轮次) | Completed (完成数) | Pass (通过数) | Fail (失败数) | Error (错误数) | Accuracy (正确率) | Duration (耗时) |\n`;
+            summaryContent += `| :--- | :--- | :--- | :--- | :--- | :--- | :--- |\n`;
             
             roundsData.forEach((roundData, rIdx) => {
                 const roundNum = rIdx + 1;
-                Object.values(roundData).forEach(res => {
-                    const q = questionsList.find(item => item.id === res.id);
-                    if (!q) return;
-                    
-                    const check = res.check || {};
-                    
-                    // Format trace text
-                    let traceTextParts = [];
-                    if (res.history) {
-                        res.history.forEach((step, sIdx) => {
-                            traceTextParts.push(`--- 回合 ${sIdx + 1} ---`);
-                            const resp = step.response || {};
-                            if (resp.reasoning) {
-                                traceTextParts.push(`[思维链路]\n${resp.reasoning}`);
-                            }
-                            if (resp.toolCall) {
-                                traceTextParts.push(`[工具调用] ${resp.toolCall.name} with args: ${JSON.stringify(resp.toolCall.arguments)}`);
-                            } else if (resp.content) {
-                                traceTextParts.push(`[助手输出]\n${resp.content}`);
-                            }
-                            if (step.result) {
-                                traceTextParts.push(`[执行结果]\n${step.result}`);
-                            } else if (step.error) {
-                                traceTextParts.push(`[执行报错]\n${step.error}`);
-                            }
-                        });
-                    }
-                    const fullTraceStr = traceTextParts.join("\n\n");
-                    
-                    const row = [
-                        `Round ${roundNum}`,
-                        benchmarkModelName,
-                        benchmarkStartTime || '-',
-                        benchmarkEndTime || new Date().toLocaleString(),
-                        `Q${res.id}`,
-                        q.difficulty,
-                        q.question,
-                        res.status,
-                        res.attempts || 0,
-                        res.inputTokens || 0,
-                        res.outputTokens || 0,
-                        q.row_count,
-                        check.actualRowCount ?? "",
-                        q.columns.length,
-                        check.actualColumnCount ?? "",
-                        res.generatedSql || "",
-                        res.status === 'error' ? (res.error || (res.check ? res.check.error : '未知错误')) : '',
-                        fullTraceStr
-                    ];
-                    rows.push(row);
+                const results = Object.values(roundData);
+                const passCount = results.filter(s => s.status === 'pass').length;
+                const failCount = results.filter(s => s.status === 'fail').length;
+                const errorCount = results.filter(s => s.status === 'error').length;
+                const completedCount = passCount + failCount + errorCount;
+                const totalCount = results.length;
+                
+                const accuracy = totalCount > 0 ? ((passCount / totalCount) * 100).toFixed(1) + '%' : '0.0%';
+                
+                // Find duration from multiRoundMatrix if available
+                const rData = multiRoundMatrix.find(item => item.roundNum === roundNum);
+                const durationMin = rData ? (rData.totalDurationMs / 60000).toFixed(1) : '0.0';
+                
+                summaryContent += `| Round ${roundNum} | ${completedCount} / ${totalCount} | ${passCount} | ${failCount} | ${errorCount} | ${accuracy} | ${durationMin} min |\n`;
+            });
+            summaryContent += `\n`;
+            
+            // 3. Heatmap Matrix
+            summaryContent += `## Detailed Heatmap Matrix (热力图矩阵明细)\n`;
+            summaryContent += `| Question ID (题号) | Difficulty (难度) | `;
+            for (let i = 1; i <= totalRounds; i++) {
+                summaryContent += `Round ${i} | `;
+            }
+            summaryContent += `\n`;
+            
+            summaryContent += `| :--- | :--- | `;
+            for (let i = 1; i <= totalRounds; i++) {
+                summaryContent += `:--- | `;
+            }
+            summaryContent += `\n`;
+            
+            questionsList.forEach(q => {
+                if (!selectedQuestionIds.has(q.id)) return;
+                
+                summaryContent += `| Q${q.id} | ${q.difficulty} | `;
+                roundsData.forEach((roundData) => {
+                    const res = roundData[q.id];
+                    const status = res ? res.status : 'skipped';
+                    let statusStr = 'Skipped (已跳过)';
+                    if (status === 'pass') statusStr = 'Pass (通过)';
+                    else if (status === 'fail') statusStr = 'Fail (失败)';
+                    else if (status === 'error') statusStr = 'Error (错误)';
+                    summaryContent += `${statusStr} | `;
                 });
+                summaryContent += `\n`;
             });
             
-            const escapeCSVCell = (val) => {
-                if (val === null || val === undefined) return "";
-                let str = String(val);
-                if (str.includes('"') || str.includes(',') || str.includes('\n') || str.includes('\r')) {
-                    return '"' + str.replace(/"/g, '""') + '"';
-                }
-                return str;
-            };
-            
-            const csvContent = rows.map(r => r.map(escapeCSVCell).join(",")).join("\r\n");
-            const blob = new Blob(["\uFEFF" + csvContent], { type: "text/csv;charset=utf-8;" });
-            const url = URL.createObjectURL(blob);
-            
-            const filename = `${currentBatchId}_all_rounds.csv`;
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = filename;
-            document.body.appendChild(a);
-            a.click();
-            a.remove();
-            URL.revokeObjectURL(url);
-            
-            updateDbStatus("评测 CSV 成功下载至本地！", "status-green");
+            try {
+                updateDbStatus("正在生成并打包测试结果 ZIP...", "status-yellow");
+                const zip = new JSZip();
+                
+                // Add summary.md
+                zip.file("summary.md", summaryContent);
+                
+                // Add CSV for each round
+                roundsData.forEach((roundData, rIdx) => {
+                    const roundNum = rIdx + 1;
+                    const csvContent = generateCSVForRound(roundNum, roundData);
+                    zip.file(`trace_round_${roundNum}.csv`, csvContent);
+                });
+                
+                // Generate ZIP file blob
+                const blob = await zip.generateAsync({ type: "blob" });
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `${currentBatchId}.zip`;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                window.URL.revokeObjectURL(url);
+                updateDbStatus("导出详细测试日志成功！", "status-green");
+            } catch(e) {
+                alert(`导出失败: ${e.message}`);
+                updateDbStatus(`导出失败: ${e.message}`, "status-red");
+            }
         }
 
         function delayWithAbort(ms, signal) {
@@ -1782,7 +1889,11 @@ First row: ${firstRowStr}`;
                 let roundDuration = 0;
                 if (r === currentRoundNum) {
                     if (benchmarkRunning && currentRoundStartTime > 0) {
-                        roundDuration = performance.now() - currentRoundStartTime;
+                        let activePaused = totalPausedMs;
+                        if (benchmarkPaused && roundPausedStartTime > 0) {
+                            activePaused += (performance.now() - roundPausedStartTime);
+                        }
+                        roundDuration = performance.now() - currentRoundStartTime - activePaused;
                     }
                 } else if (r < currentRoundNum) {
                     const rData = multiRoundMatrix.find(item => item.roundNum === r);
@@ -2079,12 +2190,17 @@ First row: ${firstRowStr}`;
 
             document.getElementById('btn-start').style.display = 'none';
             document.getElementById('btn-stop').style.display = 'inline-flex';
+            document.getElementById('btn-pause').style.display = 'inline-flex';
+            benchmarkPaused = false;
+            document.getElementById('btn-pause-text').textContent = "暂停测试";
+            document.getElementById('svg-pause').innerHTML = '<path d="M6 4h4v16H6zM14 4h4v16h-4z"></path>';
             document.getElementById('btn-save-trace').disabled = true;
             
             // Generate a fresh unique batch ID for this new run session
             currentBatchId = 'test_trace_' + new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14);
             
             // Clear previous evaluation histories
+            multiRoundMatrix = [];
             allRoundsResults = [];
             
             // Disable config & filters editing
@@ -2114,6 +2230,8 @@ First row: ${firstRowStr}`;
                 
                 currentRoundNum = r;
                 currentRoundStartTime = performance.now();
+                totalPausedMs = 0;
+                roundPausedStartTime = 0;
 
                 // Clear runResults for the new round
                 runResults = {};
@@ -2139,6 +2257,17 @@ First row: ${firstRowStr}`;
                     if (!selectedQuestionIds.has(q.id)) {
                         continue; // Skip unselected questions
                     }
+
+                    // Check if paused
+                    if (benchmarkPaused && !abortController.signal.aborted) {
+                        const pauseStart = performance.now();
+                        while (benchmarkPaused && !abortController.signal.aborted) {
+                            updateDbStatus("测试已暂停，等待继续...", "status-yellow");
+                            await new Promise(resolve => setTimeout(resolve, 500));
+                        }
+                        totalPausedMs += (performance.now() - pauseStart);
+                    }
+                    if (abortController.signal.aborted) break;
 
                     currentQuestionIndex = i;
                     
@@ -2258,7 +2387,7 @@ First row: ${firstRowStr}`;
                 const roundRecord = {
                     roundNum: r,
                     results: {},
-                    totalDurationMs: currentRoundStartTime > 0 ? (performance.now() - currentRoundStartTime) : 0
+                    totalDurationMs: currentRoundStartTime > 0 ? (performance.now() - currentRoundStartTime - totalPausedMs) : 0
                 };
                 questionsList.forEach(q => {
                     if (selectedQuestionIds.has(q.id)) {
@@ -2280,6 +2409,13 @@ First row: ${firstRowStr}`;
                 if (r < totalRounds) {
                     let timeLeft = 15;
                     while (timeLeft > 0 && !abortController.signal.aborted) {
+                        if (benchmarkPaused && !abortController.signal.aborted) {
+                            while (benchmarkPaused && !abortController.signal.aborted) {
+                                updateDbStatus("休息已暂停，等待继续...", "status-yellow");
+                                await new Promise(resolve => setTimeout(resolve, 500));
+                            }
+                        }
+                        if (abortController.signal.aborted) break;
                         updateDbStatus(`第 ${r}/${totalRounds} 轮已完，休息等待下一轮 (${timeLeft}秒)...`, 'status-yellow');
                         try {
                             await delayWithAbort(1000, abortController.signal);
@@ -2293,8 +2429,10 @@ First row: ${firstRowStr}`;
 
             benchmarkEndTime = new Date().toLocaleString();
             benchmarkRunning = false;
+            benchmarkPaused = false;
             document.getElementById('btn-start').style.display = 'inline-flex';
             document.getElementById('btn-stop').style.display = 'none';
+            document.getElementById('btn-pause').style.display = 'none';
             document.getElementById('btn-save-trace').disabled = false;
             
             // Re-enable configs & filters
@@ -2326,6 +2464,8 @@ First row: ${firstRowStr}`;
                 benchmarkEndTime = new Date().toLocaleString();
             }
             benchmarkRunning = false;
+            benchmarkPaused = false;
+            document.getElementById('btn-pause').style.display = 'none';
             document.getElementById('btn-save-trace').disabled = false;
         }
 
@@ -2456,8 +2596,30 @@ First row: ${firstRowStr}`;
 
             document.getElementById('btn-start').onclick = startBenchmark;
             document.getElementById('btn-stop').onclick = stopBenchmark;
+            document.getElementById('btn-pause').onclick = () => {
+                if (!benchmarkRunning) return;
+                benchmarkPaused = !benchmarkPaused;
+                const pauseText = document.getElementById('btn-pause-text');
+                const pauseSvg = document.getElementById('svg-pause');
+                
+                if (benchmarkPaused) {
+                    pauseText.textContent = "继续测试";
+                    pauseSvg.innerHTML = '<polygon points="5 3 19 12 5 21 5 3"></polygon>';
+                    updateDbStatus("测试已暂停，等待继续...", "status-yellow");
+                    roundPausedStartTime = performance.now();
+                } else {
+                    pauseText.textContent = "暂停测试";
+                    pauseSvg.innerHTML = '<path d="M6 4h4v16H6zM14 4h4v16h-4z"></path>';
+                    const totalRounds = parseInt(document.getElementById('api-rounds').value.trim(), 10) || 1;
+                    updateDbStatus(`正在进行测试中 (第 ${currentRoundNum}/${totalRounds} 轮)...`, 'status-green');
+                    if (roundPausedStartTime > 0) {
+                        totalPausedMs += (performance.now() - roundPausedStartTime);
+                        roundPausedStartTime = 0;
+                    }
+                }
+            };
             document.getElementById('btn-reset').onclick = resetBenchmark;
-            document.getElementById('btn-save-trace').onclick = exportUnifiedCSV;
+            document.getElementById('btn-save-trace').onclick = exportZipArchive;
 
             // Bind click on header to toggle expansion of inspector details
             document.getElementById('inspector-header').onclick = toggleInspector;
