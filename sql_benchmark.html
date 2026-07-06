@@ -1745,35 +1745,72 @@ First row: ${firstRowStr}`;
             });
             summaryContent += `\n`;
             
-            // 3. Heatmap Matrix
-            summaryContent += `## Detailed Heatmap Matrix (热力图矩阵明细)\n`;
-            summaryContent += `| Question ID (题号) | Difficulty (难度) | `;
-            for (let i = 1; i <= totalRounds; i++) {
-                summaryContent += `Round ${i} | `;
-            }
-            summaryContent += `\n`;
+            // 3. Heatmap Matrix (transposed: rows=rounds, columns=questions)
+            const selectedQList = questionsList.filter(q => selectedQuestionIds.has(q.id));
             
-            summaryContent += `| :--- | :--- | `;
-            for (let i = 1; i <= totalRounds; i++) {
-                summaryContent += `:--- | `;
-            }
-            summaryContent += `\n`;
+            summaryContent += `## Detailed Heatmap Matrix (每轮测试对错明细表)\n`;
+            summaryContent += `> ✔ = Pass (通过)　　◯ = Fail (失败)　　✘ = Error (错误)\n\n`;
             
-            questionsList.forEach(q => {
-                if (!selectedQuestionIds.has(q.id)) return;
+            // Header row: | 测试编号 | Q1 | Q2 | ... | 做对题数 | 正确率 |
+            summaryContent += `| 测试编号 | `;
+            selectedQList.forEach(q => { summaryContent += `Q${q.id} | `; });
+            summaryContent += `做对题数 | 正确率 |\n`;
+            
+            // Separator row
+            summaryContent += `|---|`;
+            selectedQList.forEach(() => { summaryContent += `---|`; });
+            summaryContent += `---|---|\n`;
+            
+            // Per-question pass counters (for bottom summary rows)
+            const questionPassCounts = {};
+            selectedQList.forEach(q => { questionPassCounts[q.id] = 0; });
+            let totalPassAll = 0;
+            let totalQuestionsAll = 0;
+            
+            // Data rows: one per round
+            roundsData.forEach((roundData, rIdx) => {
+                const roundNum = rIdx + 1;
+                let roundPass = 0;
+                let roundTotal = selectedQList.length;
                 
-                summaryContent += `| Q${q.id} | ${q.difficulty} | `;
-                roundsData.forEach((roundData) => {
+                summaryContent += `| 测试 ${roundNum} | `;
+                selectedQList.forEach(q => {
                     const res = roundData[q.id];
                     const status = res ? res.status : 'skipped';
-                    let statusStr = 'Skipped (已跳过)';
-                    if (status === 'pass') statusStr = 'Pass (通过)';
-                    else if (status === 'fail') statusStr = 'Fail (失败)';
-                    else if (status === 'error') statusStr = 'Error (错误)';
-                    summaryContent += `${statusStr} | `;
+                    if (status === 'pass') {
+                        summaryContent += `✔ | `;
+                        roundPass++;
+                        questionPassCounts[q.id]++;
+                    } else if (status === 'fail') {
+                        summaryContent += `◯ | `;
+                    } else if (status === 'error') {
+                        summaryContent += `✘ | `;
+                    } else {
+                        summaryContent += `- | `;
+                    }
                 });
-                summaryContent += `\n`;
+                totalPassAll += roundPass;
+                totalQuestionsAll += roundTotal;
+                
+                const roundAccuracy = roundTotal > 0 ? ((roundPass / roundTotal) * 100).toFixed(1) : '0.0';
+                summaryContent += `**${roundPass}/${roundTotal}** | **${roundAccuracy}%** |\n`;
             });
+            
+            // Summary row 1: 做对次数 (pass count per question)
+            const overallAccuracy = totalQuestionsAll > 0 ? ((totalPassAll / totalQuestionsAll) * 100).toFixed(1) : '0.0';
+            summaryContent += `| **做对次数** | `;
+            selectedQList.forEach(q => {
+                summaryContent += `${questionPassCounts[q.id]}/${totalRounds} | `;
+            });
+            summaryContent += `**${totalPassAll}/${totalQuestionsAll}** | **${overallAccuracy}%** |\n`;
+            
+            // Summary row 2: 每题正确率
+            summaryContent += `| **每题正确率** | `;
+            selectedQList.forEach(q => {
+                const qAcc = totalRounds > 0 ? ((questionPassCounts[q.id] / totalRounds) * 100).toFixed(1) : '0.0';
+                summaryContent += `${qAcc}% | `;
+            });
+            summaryContent += `**${totalPassAll}/${totalQuestionsAll}** | **${overallAccuracy}%** |\n`;
             
             try {
                 updateDbStatus("正在生成并打包测试结果 ZIP...", "status-yellow");
