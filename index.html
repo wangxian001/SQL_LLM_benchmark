@@ -844,34 +844,39 @@
         <!-- Panel 1: Heatmap (Status Mapping) -->
         <div class="panel">
             <div class="panel-header" style="display: flex; justify-content: space-between; align-items: center;">
-                <div style="display: flex; align-items: center; gap: 20px;">
-                    <span class="panel-title">测试题目状态映射</span>
-                    <!-- Legends -->
-                    <div style="display: flex; align-items: center; gap: 12px; font-size: 11.5px; color: var(--text-muted);">
-                        <div style="display: flex; align-items: center; gap: 5px;">
-                            <span style="width: 12px; height: 12px; background-color: var(--success); border-radius: 3px; display: inline-block;"></span>
-                            <span>通过 (Pass)</span>
+                <div style="display: flex; flex-direction: column; gap: 4px;">
+                    <div style="display: flex; align-items: center; gap: 20px;">
+                        <span class="panel-title">测试状态</span>
+                        <!-- Legends -->
+                        <div style="display: flex; align-items: center; gap: 12px; font-size: 11.5px; color: var(--text-muted);">
+                            <div style="display: flex; align-items: center; gap: 5px;">
+                                <span style="width: 12px; height: 12px; background-color: var(--success); border-radius: 3px; display: inline-block;"></span>
+                                <span>通过 (Pass)</span>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 5px;">
+                                <span style="width: 12px; height: 12px; background: linear-gradient(135deg, #e06060 50%, #f8baba 50%); border-radius: 3px; display: inline-block;"></span>
+                                <span>失败 (Fail)</span>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 5px;">
+                                <span style="width: 12px; height: 12px; background-color: var(--danger); border-radius: 3px; display: inline-block;"></span>
+                                <span>错误 (Error)</span>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 5px;">
+                                <span style="width: 12px; height: 12px; background-color: #3b82f6; border-radius: 3px; display: inline-block;"></span>
+                                <span>运行中 (Running)</span>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 5px;">
+                                <span style="width: 12px; height: 12px; background-color: #eeedea; border-radius: 3px; display: inline-block; border: 1px solid #e0e0dc;"></span>
+                                <span>等待 (Pending)</span>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 5px;">
+                                <span style="width: 12px; height: 12px; background-color: #fafafa; border-radius: 3px; display: inline-block; border: 1px dashed rgba(28, 130, 173, 0.2);"></span>
+                                <span>跳过 (Skipped)</span>
+                            </div>
                         </div>
-                        <div style="display: flex; align-items: center; gap: 5px;">
-                            <span style="width: 12px; height: 12px; background: linear-gradient(135deg, #e06060 50%, #f8baba 50%); border-radius: 3px; display: inline-block;"></span>
-                            <span>失败 (Fail)</span>
-                        </div>
-                        <div style="display: flex; align-items: center; gap: 5px;">
-                            <span style="width: 12px; height: 12px; background-color: var(--danger); border-radius: 3px; display: inline-block;"></span>
-                            <span>错误 (Error)</span>
-                        </div>
-                        <div style="display: flex; align-items: center; gap: 5px;">
-                            <span style="width: 12px; height: 12px; background-color: #3b82f6; border-radius: 3px; display: inline-block;"></span>
-                            <span>运行中 (Running)</span>
-                        </div>
-                        <div style="display: flex; align-items: center; gap: 5px;">
-                            <span style="width: 12px; height: 12px; background-color: #eeedea; border-radius: 3px; display: inline-block; border: 1px solid #e0e0dc;"></span>
-                            <span>等待 (Pending)</span>
-                        </div>
-                        <div style="display: flex; align-items: center; gap: 5px;">
-                            <span style="width: 12px; height: 12px; background-color: #fafafa; border-radius: 3px; display: inline-block; border: 1px dashed rgba(28, 130, 173, 0.2);"></span>
-                            <span>跳过 (Skipped)</span>
-                        </div>
+                    </div>
+                    <div style="font-size: 12px; color: var(--text-muted); font-family: var(--font-sans); margin-top: 2px;">
+                        当前测试模型：<span id="current-tested-model" style="font-weight: 600; color: var(--info);">-</span>
                     </div>
                 </div>
                 <span id="run-progress-text" style="font-size: 13px; color: var(--text-muted);">0 / 25 已完成</span>
@@ -1013,6 +1018,9 @@
         let multiRoundMatrix = []; // Array of round records
         let currentBatchId = 'test_trace_' + new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14); // Unique ID for the current benchmark run session
         let allRoundsResults = []; // Array of runResults copies for each round
+        let benchmarkModelName = '-';
+        let benchmarkStartTime = null;
+        let benchmarkEndTime = null;
         
         // Selection State
         const selectedQuestionIds = new Set(questionsList.map(q => q.id));
@@ -1597,7 +1605,8 @@ First row: ${firstRowStr}`;
             
             // Build CSV rows
             const headers = [
-                "Round (轮次)", "Question ID (题号)", "Difficulty (难度)", "Question (题目描述)", 
+                "Round (轮次)", "Model Name (模型名称)", "Start Time (开始时间)", "End Time (结束时间)",
+                "Question ID (题号)", "Difficulty (难度)", "Question (题目描述)", 
                 "Status (状态)", "Attempts (尝试次数)", "Input Tokens (输入Tokens)", "Output Tokens (输出Tokens)", 
                 "Expected Row Count (期望行数)", "Actual Row Count (实际行数)",
                 "Expected Column Count (期望列数)", "Actual Column Count (实际列数)",
@@ -1639,6 +1648,9 @@ First row: ${firstRowStr}`;
                     
                     const row = [
                         `Round ${roundNum}`,
+                        benchmarkModelName,
+                        benchmarkStartTime || '-',
+                        benchmarkEndTime || new Date().toLocaleString(),
                         `Q${res.id}`,
                         q.difficulty,
                         q.question,
@@ -2060,6 +2072,11 @@ First row: ${firstRowStr}`;
                 return;
             }
 
+            benchmarkModelName = model;
+            benchmarkStartTime = new Date().toLocaleString();
+            benchmarkEndTime = null;
+            document.getElementById('current-tested-model').textContent = model;
+
             document.getElementById('btn-start').style.display = 'none';
             document.getElementById('btn-stop').style.display = 'inline-flex';
             document.getElementById('btn-save-trace').disabled = true;
@@ -2274,6 +2291,7 @@ First row: ${firstRowStr}`;
                 }
             }
 
+            benchmarkEndTime = new Date().toLocaleString();
             benchmarkRunning = false;
             document.getElementById('btn-start').style.display = 'inline-flex';
             document.getElementById('btn-stop').style.display = 'none';
@@ -2305,6 +2323,7 @@ First row: ${firstRowStr}`;
         function stopBenchmark() {
             if (abortController) {
                 abortController.abort();
+                benchmarkEndTime = new Date().toLocaleString();
             }
             benchmarkRunning = false;
             document.getElementById('btn-save-trace').disabled = false;
@@ -2894,7 +2913,18 @@ First row: ${firstRowStr}`;
         window.selectQuestion = selectQuestion;
 
         // Run DuckDB loader on page load
-        window.addEventListener('DOMContentLoaded', initDuckDB);
+        window.addEventListener('DOMContentLoaded', () => {
+            initDuckDB();
+            // Set initial tested model name display
+            const modelSelect = document.getElementById('api-model');
+            const modelDisplay = document.getElementById('current-tested-model');
+            if (modelSelect && modelDisplay) {
+                modelDisplay.textContent = modelSelect.value || '-';
+                modelSelect.addEventListener('change', () => {
+                    modelDisplay.textContent = modelSelect.value || '-';
+                });
+            }
+        });
     </script>
 </body>
 </html>
