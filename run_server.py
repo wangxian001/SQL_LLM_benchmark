@@ -89,7 +89,10 @@ class CORSHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                                 
                                 if resp.get('toolCall'):
                                     tc = resp['toolCall']
-                                    trace_text_parts.append(f"[工具调用] {tc.get('name')} with args: {tc.get('arguments')}")
+                                    fn = tc.get('function') or {}
+                                    tc_name = tc.get('name') or fn.get('name')
+                                    tc_args = tc.get('arguments') or fn.get('arguments')
+                                    trace_text_parts.append(f"[工具调用] {tc_name} with args: {tc_args}")
                                 elif resp.get('content'):
                                     trace_text_parts.append(f"[助手输出]\n{resp['content']}")
                                     

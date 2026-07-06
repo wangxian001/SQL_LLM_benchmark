@@ -1636,7 +1636,11 @@ First row: ${firstRowStr}`;
                             traceTextParts.push(`[思维链路]\n${resp.reasoning}`);
                         }
                         if (resp.toolCall) {
-                            traceTextParts.push(`[工具调用] ${resp.toolCall.name} with args: ${JSON.stringify(resp.toolCall.arguments)}`);
+                            const tc = resp.toolCall;
+                            const fn = tc.function || {};
+                            const tcName = tc.name || fn.name;
+                            const tcArgs = tc.arguments || fn.arguments;
+                            traceTextParts.push(`[工具调用] ${tcName} with args: ${JSON.stringify(tcArgs)}`);
                         } else if (resp.content) {
                             traceTextParts.push(`[助手输出]\n${resp.content}`);
                         }
@@ -3028,7 +3032,9 @@ First row: ${firstRowStr}`;
                 let toolCallHtml = '';
                 if (resp.toolCall) {
                     const call = resp.toolCall;
-                    let argsText = call.function.arguments;
+                    const fn = call.function || {};
+                    const callName = call.name || fn.name;
+                    let argsText = call.arguments || fn.arguments;
                     try {
                         argsText = JSON.stringify(JSON.parse(argsText), null, 2);
                     } catch(e){}
@@ -3036,7 +3042,7 @@ First row: ${firstRowStr}`;
                     toolCallHtml = `
                         <div style="margin-top: 10px; border-top: 1px solid var(--border-color); padding-top: 8px;">
                             <span style="font-weight:700; color:#818cf8; font-size:11.5px; font-family:var(--font-mono);">
-                                发起工具调用 (Tool Call): <span style="color:#c084fc;">${call.function.name}</span>
+                                发起工具调用 (Tool Call): <span style="color:#c084fc;">${callName}</span>
                             </span>
                             <pre style="background:#09090d; border:1px solid var(--border-color); padding:8px; border-radius:6px; font-size:11.5px; font-family:var(--font-mono); margin-top:4px; overflow-x:auto; color:#a7f3d0;">${argsText}</pre>
                         </div>
