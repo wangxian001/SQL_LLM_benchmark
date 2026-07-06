@@ -1,0 +1,13 @@
+# Ignore local database tables (downloaded via download_tables.py)
+tables/
+
+# Ignore local evaluation output logs
+trace_log/
+
+# Python caching
+__pycache__/
+*.pyc
+
+# OS files
+.DS_Store
+Thumbs.db
