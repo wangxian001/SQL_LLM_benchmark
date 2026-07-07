@@ -1,16 +1,23 @@
-<!-- Version: 2026-07-07_2135 | Git Page client-side JSZip version synced with V1.1 LLM fixes -->
-<!-- Version: 2026-07-06T23:20:00+08:00 -->
-<!-- Description: Replicated LLM SQL Benchmark with DuckDB-Wasm. Changed styling, fonts, buttons, cards, and colors to match the original light-mode theme. Allows users to export all round CSV traces as a ZIP along with a summary markdown file. Displays overall accuracy and includes quick instructions. Automatically saves API endpoint, key, model, and rounds to localStorage upon clicking start benchmark. -->
+<!-- Version: 2026-07-07_2205 | 100% aligned with 150 version except JSZip and github.io path fallbacks -->
+<!-- Version: 2026-07-07T20:55:00+08:00  V1.1 (GitHub-JSZip)
+     本版对齐原站 sql-benchmark.nicklothian.com 默认测试口径:
+     (1) 无tool_call: 原站"无状态重发"逻辑(maxNoToolCallRetries=2,同一请求最多3次,不污染上下文,每次计入20次调用预算,3次仍无则判error);
+     (2) SQL报错重试默认 1->2 (对齐 runBenchmark 默认 maxRetries=2);
+     (3) DuckDB-Wasm 1.28.0->1.32.0 (对齐原站 package-lock 实际版本);
+     (4) max_tokens/temperature 默认 2048/0.1 (可改, 默认即对齐);
+     (5) Q24 参考SQL别名 o->so (不参与评分, 与原站页面一致)。
+     另含其它工作线合并的改进: CSV改用registerFileBuffer二进制加载; 超时改用AbortController真正中断在飞请求。 -->
+<!-- Description: Replicated LLM SQL Benchmark with DuckDB-Wasm. Changed styling, fonts, buttons, cards, and colors to match the original light-mode theme. Allows users to export all round CSV traces as a ZIP along with a summary markdown file. Displays overall accuracy, includes quick instructions, dynamically resolves table paths, and organizes configurations in two rows. Automatically saves API endpoint, key, model, and rounds to localStorage upon clicking start benchmark. -->
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LLM SQL Local Benchmark</title>
+    <title>LLM SQL Local Benchmark V1.1 (GitHub-JSZip)</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600;700&family=Source+Serif+4:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <style>
         :root {
             --primary: #00337c;
@@ -71,6 +78,7 @@
             line-height: 1.1;
             color: var(--text-color);
         }
+
         .header-title .version-tag {
             display: inline-block;
             margin-left: 10px;
@@ -772,12 +780,12 @@
         <div class="config-grid">
             <div class="input-group">
                 <label>API 接口地址 (OpenAI 兼容)</label>
-                <input type="text" id="api-endpoint" value="https://api.deepseek.com/v1/chat/completions">
+                <input type="text" id="api-endpoint" value="https://wxh.synology.me:52666/openai/deepseek/v1/chat/completions">
             </div>
             <div class="input-group">
                 <label>API 密钥 (API Key)</label>
                 <div style="display: flex; gap: 8px;">
-                    <input type="password" id="api-key" value="" placeholder="请输入您的 API Key" style="flex-grow: 1; width: 0; min-width: 120px;">
+                    <input type="password" id="api-key" value="sk-mV24DlRvPqeIROtZfOi9J2vIMhVSTGSD2PhHlTPtHaUvK999" style="flex-grow: 1; width: 0; min-width: 120px;">
                     <button id="btn-refresh-models" class="btn btn-secondary" style="padding: 0 12px; flex-shrink: 0; display: inline-flex; align-items: center; justify-content: center;" title="从API接口获取可用模型列表">
                         <svg width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l.73-.73"></path></svg>
                     </button>
@@ -786,6 +794,7 @@
             <div class="input-group">
                 <label>模型名称 (Model)</label>
                 <select id="api-model">
+                    <option value="DeepSeek-V4-Flash">DeepSeek-V4-Flash</option>
                     <option value="deepseek-chat">deepseek-chat</option>
                     <option value="deepseek-coder">deepseek-coder</option>
                 </select>
@@ -1066,7 +1075,8 @@
         let totalPausedMs = 0;
         let roundPausedStartTime = 0;
         let inspectorExpanded = false;
-        let multiRoundMatrix = []; // Array of round records
+        let multiRoundMatrix = [];
+        let allRoundsResults = []; // Array of round records
         function getLocalTimestamp() {
             const now = new Date();
             const YYYY = now.getFullYear();
@@ -1079,7 +1089,6 @@
         }
 
         let currentBatchId = 'trace_' + getLocalTimestamp(); // Unique ID for the current benchmark run session
-        let allRoundsResults = []; // Array of runResults copies for each round
         let benchmarkModelName = '-';
         let benchmarkStartTime = null;
         let benchmarkEndTime = null;
@@ -1118,10 +1127,10 @@
                     const csvUrl = `${origin}${basePath}tables/${name}.csv`;
                     const res = await fetch(csvUrl);
                     if (!res.ok) throw new Error(`无法获取文件 ${csvUrl}: ${res.statusText}`);
-                    const text = await res.text();
-                    const vPath = `tables/${name}.csv`;
-                    await db.registerFileText(vPath, text);
-                    await conn.query(`CREATE VIEW "${name}" AS SELECT * FROM read_csv_auto('${vPath}')`);
+                    const bytes = new Uint8Array(await res.arrayBuffer());
+                    const vPath = `${name}.csv`;
+                    await db.registerFileBuffer(vPath, bytes);
+                    await conn.query(`CREATE VIEW ${name} AS SELECT * FROM read_csv_auto('${vPath}')`);
                 }
 
                 // Retrieve Database Schema
@@ -1351,7 +1360,8 @@ First row: ${firstRowStr}`;
             return content.replace(/<think>[\s\S]*?<\/think>/gi, "").trim();
         }
 
-        // Call user's Synology DeepSeek API
+        // Call user's OpenAI-compatible API. No-tool-call responses are retried with the
+        // exact same request body, matching the original benchmark behavior.
         async function callLLM(endpoint, apiKey, model, systemPrompt, messages, maxTokens, temperature, signal, onCallAttempt, onTokenUsage) {
             const formattedMessages = [{ role: "system", content: systemPrompt }];
             for (const m of messages) {
@@ -1643,9 +1653,12 @@ First row: ${firstRowStr}`;
 
         // Save Trace to server as local CSV
         async function saveTraceToServer(isManual = false, roundNum = null, totalRounds = null) {
+            if (window.location.hostname.endsWith('github.io')) {
+                return;
+            }
             const results = Object.values(runResults);
             if (results.length === 0) {
-                if (isManual) alert("暂无数据可保存");
+                if (isManual) alert("暂无测试结果可保存！");
                 return;
             }
             
@@ -1674,6 +1687,9 @@ First row: ${firstRowStr}`;
                 batchId: currentBatchId,
                 roundNum: roundNum,
                 totalRounds: totalRounds,
+                modelName: benchmarkModelName,
+                startTime: benchmarkStartTime || '-',
+                endTime: benchmarkEndTime || new Date().toLocaleString(),
                 results: payload
             };
             
@@ -1704,83 +1720,140 @@ First row: ${firstRowStr}`;
             }
         }
 
-        function generateCSVForRound(roundNum, roundData) {
-            const headers = [
-                "Round (轮次)", "Model Name (模型名称)", "Start Time (开始时间)", "End Time (结束时间)",
-                "Question ID (题号)", "Difficulty (难度)", "Question (题目描述)", 
-                "Status (状态)", "Attempts (尝试次数)", "Input Tokens (输入Tokens)", "Output Tokens (输出Tokens)", 
-                "Expected Row Count (期望行数)", "Actual Row Count (实际行数)",
-                "Expected Column Count (期望列数)", "Actual Column Count (实际列数)",
-                "Generated SQL (生成的SQL)", "Error Message (错误信息)", "Full Dialogue Trace (完整对话轨迹)"
-            ];
+        function generateSummaryMarkdown() {
+            if (!currentBatchId) return "";
             
-            const rows = [headers];
+            let summaryContent = `# Benchmark Accuracy Summary (基准测试正确率统计汇总)\n\n`;
             
-            Object.values(roundData).forEach(res => {
-                const q = questionsList.find(item => item.id === res.id);
-                if (!q) return;
+            // 1. Overall Metrics
+            const totalRounds = multiRoundMatrix.length;
+            const selectedCount = selectedQuestionIds.size;
+            
+            summaryContent += `## Overall Metrics (总体统计)\n`;
+            summaryContent += `- **Batch ID (批次时间戳)**: ${currentBatchId}\n`;
+            summaryContent += `- **Model Name (模型名称)**: ${benchmarkModelName}\n`;
+            summaryContent += `- **Start Time (开始时间)**: ${benchmarkStartTime || '-'}\n`;
+            summaryContent += `- **End Time (结束时间)**: ${benchmarkEndTime || new Date().toLocaleString()}\n`;
+            summaryContent += `- **Total Rounds Run (实际运行轮次)**: ${totalRounds}\n`;
+            summaryContent += `- **Questions Selected per Round (每轮测试题数)**: ${selectedCount}\n\n`;
+            
+            // 2. Round-by-Round Metrics Table
+            summaryContent += `## Round-by-Round Metrics (各轮测试正确率)\n`;
+            summaryContent += `| Round (轮次) | Completed (完成数) | Pass (通过数) | Fail (失败数) | Error (错误数) | Accuracy (正确率) | Duration (耗时) |\n`;
+            summaryContent += `| :--- | :--- | :--- | :--- | :--- | :--- | :--- |\n`;
+            
+            multiRoundMatrix.forEach(round => {
+                const results = Object.values(round.results);
+                const passCount = results.filter(s => s === 'pass').length;
+                const failCount = results.filter(s => s === 'fail').length;
+                const errorCount = results.filter(s => s === 'error').length;
+                const completedCount = passCount + failCount + errorCount;
+                const totalCount = results.length;
                 
-                const check = res.check || {};
+                const accuracy = totalCount > 0 ? ((passCount / totalCount) * 100).toFixed(1) + '%' : '0.0%';
+                const durationMin = (round.totalDurationMs / 60000).toFixed(1);
                 
-                let traceTextParts = [];
-                if (res.history) {
-                    res.history.forEach((step, sIdx) => {
-                        traceTextParts.push(`--- 回合 ${sIdx + 1} ---`);
-                        const resp = step.response || {};
-                        if (resp.reasoning) {
-                            traceTextParts.push(`[思维链路]\n${resp.reasoning}`);
-                        }
-                        if (resp.toolCall) {
-                            const tc = resp.toolCall;
-                            const fn = tc.function || {};
-                            const tcName = tc.name || fn.name;
-                            const tcArgs = tc.arguments || fn.arguments;
-                            traceTextParts.push(`[工具调用] ${tcName} with args: ${JSON.stringify(tcArgs)}`);
-                        } else if (resp.content) {
-                            traceTextParts.push(`[助手输出]\n${resp.content}`);
-                        }
-                        if (step.result) {
-                            traceTextParts.push(`[执行结果]\n${step.result}`);
-                        } else if (step.error) {
-                            traceTextParts.push(`[执行报错]\n${step.error}`);
-                        }
-                    });
-                }
-                const fullTraceStr = traceTextParts.join("\n\n");
+                summaryContent += `| Round ${round.roundNum} | ${completedCount} / ${totalCount} | ${passCount} | ${failCount} | ${errorCount} | ${accuracy} | ${durationMin} min |\n`;
+            });
+            summaryContent += `\n`;
+            
+            // 3. Heatmap Matrix (transposed: rows=rounds, columns=questions)
+            const selectedQList = questionsList.filter(q => selectedQuestionIds.has(q.id));
+            
+            summaryContent += `## Detailed Heatmap Matrix (每轮测试对错明细表)\n`;
+            summaryContent += `> ✔ = Pass (通过)　　◯ = Fail (失败)　　✘ = Error (错误)\n\n`;
+            
+            // Header row: | 测试编号 | Q1 | Q2 | ... | 做对题数 | 正确率 |
+            summaryContent += `| 测试编号 | `;
+            selectedQList.forEach(q => { summaryContent += `Q${q.id} | `; });
+            summaryContent += `做对题数 | 正确率 |\n`;
+            
+            // Separator row
+            summaryContent += `|---|`;
+            selectedQList.forEach(() => { summaryContent += `---|`; });
+            summaryContent += `---|---|\n`;
+            
+            // Per-question pass counters (for bottom summary rows)
+            const questionPassCounts = {};
+            selectedQList.forEach(q => { questionPassCounts[q.id] = 0; });
+            let totalPassAll = 0;
+            let totalQuestionsAll = 0;
+            
+            // Data rows: one per round
+            multiRoundMatrix.forEach((round, rIdx) => {
+                const roundNum = rIdx + 1;
+                let roundPass = 0;
+                let roundTotal = selectedQList.length;
                 
-                const row = [
-                    `Round ${roundNum}`,
-                    benchmarkModelName,
-                    benchmarkStartTime || '-',
-                    benchmarkEndTime || new Date().toLocaleString(),
-                    `Q${res.id}`,
-                    q.difficulty,
-                    q.question,
-                    res.status,
-                    res.attempts || 0,
-                    res.inputTokens || 0,
-                    res.outputTokens || 0,
-                    q.row_count,
-                    check.actualRowCount ?? "",
-                    q.columns.length,
-                    check.actualColumnCount ?? "",
-                    res.generatedSql || "",
-                    res.status === 'error' ? (res.error || (res.check ? res.check.error : '未知错误')) : '',
-                    fullTraceStr
-                ];
-                rows.push(row);
+                summaryContent += `| 测试 ${roundNum} | `;
+                selectedQList.forEach(q => {
+                    const status = round.results[q.id] || 'skipped';
+                    if (status === 'pass') {
+                        summaryContent += `✔ | `;
+                        roundPass++;
+                        questionPassCounts[q.id]++;
+                    } else if (status === 'fail') {
+                        summaryContent += `◯ | `;
+                    } else if (status === 'error') {
+                        summaryContent += `✘ | `;
+                    } else {
+                        summaryContent += `- | `;
+                    }
+                });
+                totalPassAll += roundPass;
+                totalQuestionsAll += roundTotal;
+                
+                const roundAccuracy = roundTotal > 0 ? ((roundPass / roundTotal) * 100).toFixed(1) : '0.0';
+                summaryContent += `**${roundPass}/${roundTotal}** | **${roundAccuracy}%** |\n`;
             });
             
-            const escapeCSVCell = (val) => {
-                if (val === null || val === undefined) return "";
-                let str = String(val);
-                if (str.includes('"') || str.includes(',') || str.includes('\n') || str.includes('\r')) {
-                    return '"' + str.replace(/"/g, '""') + '"';
-                }
-                return str;
-            };
+            // Summary row 1: 做对次数 (pass count per question)
+            const overallAccuracy = totalQuestionsAll > 0 ? ((totalPassAll / totalQuestionsAll) * 100).toFixed(1) : '0.0';
+            summaryContent += `| **做对次数** | `;
+            selectedQList.forEach(q => {
+                summaryContent += `${questionPassCounts[q.id]}/${totalRounds} | `;
+            });
+            summaryContent += `**${totalPassAll}/${totalQuestionsAll}** | **${overallAccuracy}%** |\n`;
             
-            return rows.map(r => r.map(escapeCSVCell).join(",")).join("\r\n");
+            // Summary row 2: 每题正确率
+            summaryContent += `| **每题正确率** | `;
+            selectedQList.forEach(q => {
+                const qAcc = totalRounds > 0 ? ((questionPassCounts[q.id] / totalRounds) * 100).toFixed(1) : '0.0';
+                summaryContent += `${qAcc}% | `;
+            });
+            summaryContent += `**${totalPassAll}/${totalQuestionsAll}** | **${overallAccuracy}%** |\n`;
+            
+            return summaryContent;
+        }
+
+        async function saveSummaryToServer() {
+            if (window.location.hostname.endsWith('github.io')) {
+                return;
+            }
+            if (!currentBatchId) return;
+            const summaryContent = generateSummaryMarkdown();
+            if (!summaryContent) return;
+            
+            try {
+                const response = await fetch('/save_summary', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        batchId: currentBatchId,
+                        summary: summaryContent
+                    })
+                });
+                if (response.ok) {
+                    const data = await response.json();
+                    console.log("Summary saved to server:", data.path);
+                    appendLogLine(new Date().toLocaleTimeString(), `Summary.md 自动存盘成功: ${data.filename}`, 'success');
+                } else {
+                    const err = await response.json();
+                    console.error("Failed to save summary:", err.message);
+                }
+            } catch(e) {
+                console.error("Error saving summary:", e.message);
+            }
         }
 
         async function exportZipArchive() {
@@ -1938,76 +2011,83 @@ First row: ${firstRowStr}`;
             }
         }
 
-        let timerWorker = null;
-        function initTimerWorker() {
-            if (timerWorker !== null) return;
-            try {
-                const workerCode = `
-                    let timers = {};
-                    self.onmessage = function(e) {
-                        if (e.data.action === 'start') {
-                            const id = e.data.id;
-                            if (timers[id]) clearTimeout(timers[id]);
-                            timers[id] = setTimeout(() => {
-                                self.postMessage({ status: 'done', id: id });
-                                delete timers[id];
-                            }, e.data.ms);
-                        } else if (e.data.action === 'stop') {
-                            const id = e.data.id;
-                            if (timers[id]) {
-                                clearTimeout(timers[id]);
-                                delete timers[id];
-                            }
-                        }
-                    };
-                `;
-                const blob = new Blob([workerCode], {type: 'application/javascript'});
-                const workerUrl = URL.createObjectURL(blob);
-                timerWorker = new Worker(workerUrl);
-            } catch(e) {
-                console.warn("Web Worker timer initialization failed, falling back to window.setTimeout:", e);
-                timerWorker = false;
-            }
-        }
-
-        function delayWithAbort(ms, signal) {
-            initTimerWorker();
+function generateCSVForRound(roundNum, roundData) {
+            const headers = [
+                "Round (轮次)", "Model Name (模型名称)", "Start Time (开始时间)", "End Time (结束时间)",
+                "Question ID (题号)", "Difficulty (难度)", "Question (题目描述)", 
+                "Status (状态)", "Attempts (尝试次数)", "Input Tokens (输入Tokens)", "Output Tokens (输出Tokens)", 
+                "Expected Row Count (期望行数)", "Actual Row Count (实际行数)",
+                "Expected Column Count (期望列数)", "Actual Column Count (实际列数)",
+                "Generated SQL (生成的SQL)", "Error Message (错误信息)", "Full Dialogue Trace (完整对话轨迹)"
+            ];
             
-            if (!timerWorker) {
-                return new Promise((resolve, reject) => {
-                    const onAbort = () => {
-                        clearTimeout(timer);
-                        reject(new Error("Aborted"));
-                    };
-                    const timer = setTimeout(() => {
-                        signal.removeEventListener('abort', onAbort);
-                        resolve();
-                    }, ms);
-                    signal.addEventListener('abort', onAbort);
-                });
-            }
-
-            return new Promise((resolve, reject) => {
-                const timerId = Math.random().toString(36).slice(2);
+            const rows = [headers];
+            
+            Object.values(roundData).forEach(res => {
+                const q = questionsList.find(item => item.id === res.id);
+                if (!q) return;
                 
-                const onAbort = () => {
-                    timerWorker.postMessage({ action: 'stop', id: timerId });
-                    timerWorker.removeEventListener('message', onMessage);
-                    reject(new Error("Aborted"));
-                };
+                const check = res.check || {};
                 
-                const onMessage = (e) => {
-                    if (e.data.status === 'done' && e.data.id === timerId) {
-                        signal.removeEventListener('abort', onAbort);
-                        timerWorker.removeEventListener('message', onMessage);
-                        resolve();
-                    }
-                };
+                let traceTextParts = [];
+                if (res.history) {
+                    res.history.forEach((step, sIdx) => {
+                        traceTextParts.push(`--- 回合 ${sIdx + 1} ---`);
+                        const resp = step.response || {};
+                        if (resp.reasoning) {
+                            traceTextParts.push(`[思维链路]\n${resp.reasoning}`);
+                        }
+                        if (resp.toolCall) {
+                            const tc = resp.toolCall;
+                            const fn = tc.function || {};
+                            const tcName = tc.name || fn.name;
+                            const tcArgs = tc.arguments || fn.arguments;
+                            traceTextParts.push(`[工具调用] ${tcName} with args: ${JSON.stringify(tcArgs)}`);
+                        } else if (resp.content) {
+                            traceTextParts.push(`[助手输出]\n${resp.content}`);
+                        }
+                        if (step.result) {
+                            traceTextParts.push(`[执行结果]\n${step.result}`);
+                        } else if (step.error) {
+                            traceTextParts.push(`[执行报错]\n${step.error}`);
+                        }
+                    });
+                }
+                const fullTraceStr = traceTextParts.join("\n\n");
                 
-                timerWorker.addEventListener('message', onMessage);
-                timerWorker.postMessage({ action: 'start', ms: ms, id: timerId });
-                signal.addEventListener('abort', onAbort);
+                const row = [
+                    `Round ${roundNum}`,
+                    benchmarkModelName,
+                    benchmarkStartTime || '-',
+                    benchmarkEndTime || new Date().toLocaleString(),
+                    `Q${res.id}`,
+                    q.difficulty,
+                    q.question,
+                    res.status,
+                    res.attempts || 0,
+                    res.inputTokens || 0,
+                    res.outputTokens || 0,
+                    q.row_count,
+                    check.actualRowCount ?? "",
+                    q.columns.length,
+                    check.actualColumnCount ?? "",
+                    res.generatedSql || "",
+                    res.status === 'error' ? (res.error || (res.check ? res.check.error : '未知错误')) : '',
+                    fullTraceStr
+                ];
+                rows.push(row);
             });
+            
+            const escapeCSVCell = (val) => {
+                if (val === null || val === undefined) return "";
+                let str = String(val);
+                if (str.includes('"') || str.includes(',') || str.includes('\n') || str.includes('\r')) {
+                    return '"' + str.replace(/"/g, '""') + '"';
+                }
+                return str;
+            };
+            
+            return rows.map(r => r.map(escapeCSVCell).join(",")).join("\r\n");
         }
 
         function renderRoundMatrix() {
@@ -2396,8 +2476,8 @@ First row: ${firstRowStr}`;
             currentBatchId = 'trace_' + getLocalTimestamp();
             
             // Clear previous evaluation histories
-            multiRoundMatrix = [];
             allRoundsResults = [];
+            multiRoundMatrix = [];
             
             // Disable config & filters editing
             document.getElementById('api-endpoint').disabled = true;
@@ -2534,13 +2614,10 @@ First row: ${firstRowStr}`;
                         if (run.error) {
                             status = 'error';
                             logFn(`测试出错: ${run.error}`, 'danger');
-                        } else if (run.queryResult) {
+                        } else {
                             check = verifyResults(q, run.queryResult);
                             status = isCorrect(check) ? 'pass' : 'fail';
                             logFn(isCorrect(check) ? "基准测试通过 (Pass)!" : "结果不符合预期 (Fail)!", isCorrect(check) ? "success" : "warning");
-                        } else {
-                            status = 'error';
-                            logFn("测试出错: 未生成查询结果", "danger");
                         }
 
                         runResults[q.id].status = status;
@@ -2594,14 +2671,12 @@ First row: ${firstRowStr}`;
                 });
                 multiRoundMatrix.push(roundRecord);
                 renderRoundMatrix();
-                
-                // Deep copy and store the full details of this round client-side
-                allRoundsResults.push(JSON.parse(JSON.stringify(runResults)));
 
                 // Automatically save trace to local CSV on round completion
                 await saveTraceToServer(false, r, totalRounds);
 
-                // If we have more rounds, delay for 15 seconds
+                allRoundsResults.push(JSON.parse(JSON.stringify(runResults)));
+
                 if (r < totalRounds) {
                     let timeLeft = 15;
                     while (timeLeft > 0 && !abortController.signal.aborted) {
@@ -2624,6 +2699,7 @@ First row: ${firstRowStr}`;
             }
 
             benchmarkEndTime = new Date().toLocaleString();
+            await saveSummaryToServer();
             benchmarkRunning = false;
             benchmarkPaused = false;
             document.getElementById('btn-start').style.display = 'inline-flex';
@@ -2668,8 +2744,8 @@ First row: ${firstRowStr}`;
         function resetBenchmark() {
             stopBenchmark();
             runResults = {};
-            multiRoundMatrix = [];
             allRoundsResults = [];
+            multiRoundMatrix = [];
             currentRoundNum = 1;
             currentQuestionIndex = 0;
             selectedQuestionId = null;
@@ -2828,7 +2904,7 @@ First row: ${firstRowStr}`;
             document.getElementById('stat-total').innerText = `${count} / 25`;
         }
 
-function applyQuestionSelection(qId, checked) {
+        function applyQuestionSelection(qId, checked) {
             const qCard = document.getElementById(`q-card-${qId}`);
 
             if (checked) {
@@ -2842,7 +2918,7 @@ function applyQuestionSelection(qId, checked) {
             }
         }
 
-function refreshSelectionUi() {
+        function refreshSelectionUi() {
             updateSelectionSummary();
             // Heatmap cell IDs only exist for the current round, so selection changes must redraw
             // the full matrix to keep future rounds (round 2+) in sync with skipped/pending state.
