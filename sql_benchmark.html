@@ -2739,18 +2739,8 @@ First row: ${firstRowStr}`;
             document.querySelectorAll('.q-checkbox').forEach(cb => {
                 cb.addEventListener('change', (e) => {
                     const qId = parseInt(e.target.dataset.id, 10);
-                    const qCard = document.getElementById(`q-card-${qId}`);
-                    
-                    if (e.target.checked) {
-                        selectedQuestionIds.add(qId);
-                        qCard.classList.remove('disabled');
-                        updateQuestionCardStatus(qId, 'pending');
-                    } else {
-                        selectedQuestionIds.delete(qId);
-                        qCard.classList.add('disabled');
-                        updateQuestionCardStatus(qId, 'skipped');
-                    }
-                    updateSelectionSummary();
+                    applyQuestionSelection(qId, e.target.checked);
+                    refreshSelectionUi();
                 });
             });
 
@@ -2762,10 +2752,10 @@ First row: ${firstRowStr}`;
                         if (q.difficulty === diff) {
                             const cb = document.getElementById(`q-cb-${q.id}`);
                             cb.checked = checked;
-                            // Trigger event manually to run same logic
-                            cb.dispatchEvent(new Event('change'));
+                            applyQuestionSelection(q.id, checked);
                         }
                     });
+                    refreshSelectionUi();
                 });
             });
 
@@ -2776,8 +2766,9 @@ First row: ${firstRowStr}`;
                 });
                 document.querySelectorAll('.q-checkbox').forEach(cb => {
                     cb.checked = true;
-                    cb.dispatchEvent(new Event('change'));
+                    applyQuestionSelection(parseInt(cb.dataset.id, 10), true);
                 });
+                refreshSelectionUi();
             };
 
             document.getElementById('btn-deselect-all').onclick = () => {
@@ -2786,8 +2777,9 @@ First row: ${firstRowStr}`;
                 });
                 document.querySelectorAll('.q-checkbox').forEach(cb => {
                     cb.checked = false;
-                    cb.dispatchEvent(new Event('change'));
+                    applyQuestionSelection(parseInt(cb.dataset.id, 10), false);
                 });
+                refreshSelectionUi();
             };
 
             document.getElementById('btn-start').onclick = startBenchmark;
@@ -2823,6 +2815,10 @@ First row: ${firstRowStr}`;
             // Bind click on refresh models button
             document.getElementById('btn-refresh-models').onclick = refreshModels;
 
+            // Redraw planned rows immediately when the user changes the number of rounds.
+            document.getElementById('api-rounds').addEventListener('input', renderRoundMatrix);
+            document.getElementById('api-rounds').addEventListener('change', renderRoundMatrix);
+
             updateSelectionSummary();
         }
 
@@ -2830,6 +2826,27 @@ First row: ${firstRowStr}`;
             const count = selectedQuestionIds.size;
             document.getElementById('selected-diff-text').innerText = count === 25 ? "全部 (25题)" : `${count} 题`;
             document.getElementById('stat-total').innerText = `${count} / 25`;
+        }
+
+function applyQuestionSelection(qId, checked) {
+            const qCard = document.getElementById(`q-card-${qId}`);
+
+            if (checked) {
+                selectedQuestionIds.add(qId);
+                if (qCard) qCard.classList.remove('disabled');
+                updateQuestionCardStatus(qId, 'pending');
+            } else {
+                selectedQuestionIds.delete(qId);
+                if (qCard) qCard.classList.add('disabled');
+                updateQuestionCardStatus(qId, 'skipped');
+            }
+        }
+
+function refreshSelectionUi() {
+            updateSelectionSummary();
+            // Heatmap cell IDs only exist for the current round, so selection changes must redraw
+            // the full matrix to keep future rounds (round 2+) in sync with skipped/pending state.
+            renderRoundMatrix();
         }
 
         function updateQuestionCardStatus(id, status) {
