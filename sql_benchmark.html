@@ -1873,17 +1873,74 @@ First row: ${firstRowStr}`;
             }
         }
 
+        let timerWorker = null;
+        function initTimerWorker() {
+            if (timerWorker !== null) return;
+            try {
+                const workerCode = `
+                    let timers = {};
+                    self.onmessage = function(e) {
+                        if (e.data.action === 'start') {
+                            const id = e.data.id;
+                            if (timers[id]) clearTimeout(timers[id]);
+                            timers[id] = setTimeout(() => {
+                                self.postMessage({ status: 'done', id: id });
+                                delete timers[id];
+                            }, e.data.ms);
+                        } else if (e.data.action === 'stop') {
+                            const id = e.data.id;
+                            if (timers[id]) {
+                                clearTimeout(timers[id]);
+                                delete timers[id];
+                            }
+                        }
+                    };
+                `;
+                const blob = new Blob([workerCode], {type: 'application/javascript'});
+                const workerUrl = URL.createObjectURL(blob);
+                timerWorker = new Worker(workerUrl);
+            } catch(e) {
+                console.warn("Web Worker timer initialization failed, falling back to window.setTimeout:", e);
+                timerWorker = false;
+            }
+        }
+
         function delayWithAbort(ms, signal) {
+            initTimerWorker();
+            
+            if (!timerWorker) {
+                return new Promise((resolve, reject) => {
+                    const onAbort = () => {
+                        clearTimeout(timer);
+                        reject(new Error("Aborted"));
+                    };
+                    const timer = setTimeout(() => {
+                        signal.removeEventListener('abort', onAbort);
+                        resolve();
+                    }, ms);
+                    signal.addEventListener('abort', onAbort);
+                });
+            }
+
             return new Promise((resolve, reject) => {
+                const timerId = Math.random().toString(36).slice(2);
+                
                 const onAbort = () => {
-                    clearTimeout(timer);
+                    timerWorker.postMessage({ action: 'stop', id: timerId });
+                    timerWorker.removeEventListener('message', onMessage);
                     reject(new Error("Aborted"));
                 };
-                const timer = setTimeout(() => {
-                    signal.removeEventListener('abort', onAbort);
-                    resolve();
-                }, ms);
                 
+                const onMessage = (e) => {
+                    if (e.data.status === 'done' && e.data.id === timerId) {
+                        signal.removeEventListener('abort', onAbort);
+                        timerWorker.removeEventListener('message', onMessage);
+                        resolve();
+                    }
+                };
+                
+                timerWorker.addEventListener('message', onMessage);
+                timerWorker.postMessage({ action: 'start', ms: ms, id: timerId });
                 signal.addEventListener('abort', onAbort);
             });
         }
