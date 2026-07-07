@@ -1,4 +1,6 @@
-# LLM SQL Local Benchmark Dashboard (大模型 SQL 局域网评测面板)
+<img width="2400" height="753" alt="image" src="https://github.com/user-attachments/assets/4ccba7ca-61a3-49d2-b8b8-b837ffa3dceb" />
+# LLM SQL Local Benchmark Dashboard 
+(大模型 SQL 评测面板)
 
 [English](#english) | [中文说明](#中文说明)
 
@@ -10,11 +12,12 @@
 ---
 ---
 
-## 使用方式二： 🚀 GitHub 拉取本仓库代码本地部署 
+## 使用方式二： 🚀 GitHub 拉取本仓库代码本地部署 <推荐>
 **[👉 拉取本仓库代码本地部署 / Click here to local deployment ](https://github.com/wangxian001/SQL_LLM_benchmark)**
 
 ---
-<img width="2265" height="897" alt="6b4b87968e6207138f9d56a9f3c76629" src="https://github.com/user-attachments/assets/efaa8cd2-15c1-4306-9490-ab9f39c7c6bc" />
+<img width="3263" height="1705" alt="image" src="https://github.com/user-attachments/assets/3f553304-b1c2-4edc-8831-bc56fe4393e9" />
+
 
 
 ## English
@@ -53,7 +56,8 @@ A client-side LLM SQL generation benchmark dashboard utilizing **DuckDB-Wasm** i
 ## 中文说明
 
 一个基于浏览器内 **DuckDB-Wasm** 运行的纯客户端大模型 SQL 生成局域网评测系统。用户可以通过该面板，针对内置的 25 道 AdventureWorks 数据集测试题，开展多轮次的 SQL 生成与正确率基准测试，并支持 Token 统计及交互 Trace 的一键合并导出。
-<img width="3217" height="1772" alt="QQ_1783337493594" src="https://github.com/user-attachments/assets/36919a68-9e24-4579-9f44-3d323928410d" />
+<img width="3315" height="1940" alt="image" src="https://github.com/user-attachments/assets/85fcdcaa-a3c3-4d5b-92a0-d11b551b3cb9" />
+
 
 ### 🔗 原项目与参考地址
 * **原项目 GitHub 仓库**: [nlothian/llm-sql-benchmark](https://github.com/nlothian/llm-sql-benchmark)
