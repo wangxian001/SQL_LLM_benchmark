@@ -1,6 +1,7 @@
 # LLM SQL Local Benchmark Dashboard 
 (大模型 SQL 评测面板)
-<img width="2400" height="753" alt="image" src="https://github.com/user-attachments/assets/4ccba7ca-61a3-49d2-b8b8-b837ffa3dceb" />
+<img width="2340" height="1032" alt="image" src="https://github.com/user-attachments/assets/06eb6d06-234f-45a1-bfe0-f625aebfd7e8" />
+
 [English](#english) | [中文说明](#中文说明)
 
 ---
@@ -92,3 +93,6 @@ A client-side LLM SQL generation benchmark dashboard utilizing **DuckDB-Wasm** i
      1. 下载数据集：`python download_tables.py`
      2. 启动服务：`python run_server.py`
      3. 浏览器访问：`http://localhost:8000/sql_benchmark.html` (或 `http://192.168.XX.XXX:8000/sql_benchmark.html` 进行局域网内其他设备访问)
+    
+<img width="2500" height="1127" alt="image" src="https://github.com/user-attachments/assets/f1589f64-03f2-4ed8-95e2-ecb2d2beecad" />
+
