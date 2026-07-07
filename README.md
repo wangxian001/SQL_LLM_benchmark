@@ -1,7 +1,6 @@
-<img width="2400" height="753" alt="image" src="https://github.com/user-attachments/assets/4ccba7ca-61a3-49d2-b8b8-b837ffa3dceb" />
 # LLM SQL Local Benchmark Dashboard 
 (大模型 SQL 评测面板)
-
+<img width="2400" height="753" alt="image" src="https://github.com/user-attachments/assets/4ccba7ca-61a3-49d2-b8b8-b837ffa3dceb" />
 [English](#english) | [中文说明](#中文说明)
 
 ---
