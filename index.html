@@ -2752,7 +2752,7 @@ function renderRoundMatrix() {
                 allRoundsResults.push(JSON.parse(JSON.stringify(runResults)));
 
                 if (r < totalRounds) {
-                    let timeLeft = 15;
+                    let timeLeft = 5;
                     while (timeLeft > 0 && !abortController.signal.aborted) {
                         if (benchmarkPaused && !abortController.signal.aborted) {
                             while (benchmarkPaused && !abortController.signal.aborted) {
