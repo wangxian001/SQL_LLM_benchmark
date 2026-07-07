@@ -13,7 +13,7 @@
 
 ## 使用方式二： 🚀 GitHub 拉取本仓库代码本地部署 <推荐>
 **[👉 拉取本仓库代码本地部署 / Click here to local deployment ](https://github.com/wangxian001/SQL_LLM_benchmark)**
-
+注意：实跑必须用服务器:python run_server.py → 访问 http://localhost:8000/sql_benchmark.html
 ---
 <img width="3263" height="1705" alt="image" src="https://github.com/user-attachments/assets/3f553304-b1c2-4edc-8831-bc56fe4393e9" />
 
@@ -88,3 +88,4 @@ A client-side LLM SQL generation benchmark dashboard utilizing **DuckDB-Wasm** i
    * 首先下载并初始化数据集：`python download_tables.py`
    * 启动本地 HTTP 服务：`python run_server.py`
    * 浏览器打开：`http://localhost:8000/sql_benchmark.html`。
+   * 注意：实跑必须用服务器:python run_server.py → 访问 http://192.168.XX.XXX:8000/sql_benchmark.html
