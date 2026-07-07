@@ -1,5 +1,4 @@
-<!-- Version: 2026-07-07_2205 | 100% aligned with 150 version except JSZip and github.io path fallbacks -->
-<!-- Version: 2026-07-07T20:55:00+08:00  V1.1 (GitHub-JSZip)
+<!-- Version: 2026-07-07T20:55:00+08:00  V1.1（202607072055）
      本版对齐原站 sql-benchmark.nicklothian.com 默认测试口径:
      (1) 无tool_call: 原站"无状态重发"逻辑(maxNoToolCallRetries=2,同一请求最多3次,不污染上下文,每次计入20次调用预算,3次仍无则判error);
      (2) SQL报错重试默认 1->2 (对齐 runBenchmark 默认 maxRetries=2);
@@ -13,9 +12,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LLM SQL Local Benchmark V1.1 (GitHub-JSZip)</title>
+    <title>LLM SQL Local Benchmark V1.1（202607072055）</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600;700&family=Source+Serif+4:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
@@ -751,7 +749,7 @@
 
     <header>
         <div class="header-title">
-            <h1>LLM SQL Local Benchmark <span class="version-tag">V1.1 (GitHub-JSZip)</span></h1>
+            <h1>LLM SQL Local Benchmark <span class="version-tag">V1.1（202607072055）</span></h1>
             <p>1:1 本地独立测试模块 · AdventureWorks 数据集</p>
         </div>
         <div id="db-status" class="system-status status-yellow">
@@ -1076,8 +1074,7 @@
         let roundPausedStartTime = 0;
         let inspectorExpanded = false;
         let multiRoundMatrix = [];
-        let timerWorker = null;
-        let allRoundsResults = []; // Array of round records
+        let timerWorker = null; // Array of round records
         function getLocalTimestamp() {
             const now = new Date();
             const YYYY = now.getFullYear();
@@ -1654,9 +1651,6 @@ First row: ${firstRowStr}`;
 
         // Save Trace to server as local CSV
         async function saveTraceToServer(isManual = false, roundNum = null, totalRounds = null) {
-            if (window.location.hostname.endsWith('github.io')) {
-                return;
-            }
             const results = Object.values(runResults);
             if (results.length === 0) {
                 if (isManual) alert("暂无测试结果可保存！");
@@ -1828,9 +1822,6 @@ First row: ${firstRowStr}`;
         }
 
         async function saveSummaryToServer() {
-            if (window.location.hostname.endsWith('github.io')) {
-                return;
-            }
             if (!currentBatchId) return;
             const summaryContent = generateSummaryMarkdown();
             if (!summaryContent) return;
@@ -1863,232 +1854,39 @@ First row: ${firstRowStr}`;
                 return;
             }
             
-            // Capture current round results if benchmark stopped early
-            let roundsData = [...allRoundsResults];
-            if (Object.keys(runResults).length > 0) {
-                const currentRoundCaptured = roundsData.some((_, idx) => (idx + 1) === currentRoundNum);
-                if (!currentRoundCaptured) {
-                    roundsData.push(JSON.parse(JSON.stringify(runResults)));
-                }
-            }
-            
-            if (roundsData.length === 0) {
-                alert("暂无测试数据可导出！");
-                return;
-            }
-            
-            // Build summary.md markdown content
-            let summaryContent = `# Benchmark Accuracy Summary (基准测试正确率统计汇总)\n\n`;
-            const totalRounds = roundsData.length;
-            const selectedCount = selectedQuestionIds.size;
-            
-            summaryContent += `## Overall Metrics (总体统计)\n`;
-            summaryContent += `- **Batch ID (批次时间戳)**: ${currentBatchId}\n`;
-            summaryContent += `- **Model Name (模型名称)**: ${benchmarkModelName}\n`;
-            summaryContent += `- **Start Time (开始时间)**: ${benchmarkStartTime || '-'}\n`;
-            summaryContent += `- **End Time (结束时间)**: ${benchmarkEndTime || new Date().toLocaleString()}\n`;
-            summaryContent += `- **Total Rounds Run (实际运行轮次)**: ${totalRounds}\n`;
-            summaryContent += `- **Questions Selected per Round (每轮测试题数)**: ${selectedCount}\n\n`;
-            
-            // 2. Round-by-Round Metrics Table
-            summaryContent += `## Round-by-Round Metrics (各轮测试正确率)\n`;
-            summaryContent += `| Round (轮次) | Completed (完成数) | Pass (通过数) | Fail (失败数) | Error (错误数) | Accuracy (正确率) | Duration (耗时) |\n`;
-            summaryContent += `| :--- | :--- | :--- | :--- | :--- | :--- | :--- |\n`;
-            
-            roundsData.forEach((roundData, rIdx) => {
-                const roundNum = rIdx + 1;
-                const results = Object.values(roundData);
-                const passCount = results.filter(s => s.status === 'pass').length;
-                const failCount = results.filter(s => s.status === 'fail').length;
-                const errorCount = results.filter(s => s.status === 'error').length;
-                const completedCount = passCount + failCount + errorCount;
-                const totalCount = results.length;
-                
-                const accuracy = totalCount > 0 ? ((passCount / totalCount) * 100).toFixed(1) + '%' : '0.0%';
-                
-                // Find duration from multiRoundMatrix if available
-                const rData = multiRoundMatrix.find(item => item.roundNum === roundNum);
-                const durationMin = rData ? (rData.totalDurationMs / 60000).toFixed(1) : '0.0';
-                
-                summaryContent += `| Round ${roundNum} | ${completedCount} / ${totalCount} | ${passCount} | ${failCount} | ${errorCount} | ${accuracy} | ${durationMin} min |\n`;
-            });
-            summaryContent += `\n`;
-            
-            // 3. Heatmap Matrix (transposed: rows=rounds, columns=questions)
-            const selectedQList = questionsList.filter(q => selectedQuestionIds.has(q.id));
-            
-            summaryContent += `## Detailed Heatmap Matrix (每轮测试对错明细表)\n`;
-            summaryContent += `> ✔ = Pass (通过)　　◯ = Fail (失败)　　✘ = Error (错误)\n\n`;
-            
-            // Header row: | 测试编号 | Q1 | Q2 | ... | 做对题数 | 正确率 |
-            summaryContent += `| 测试编号 | `;
-            selectedQList.forEach(q => { summaryContent += `Q${q.id} | `; });
-            summaryContent += `做对题数 | 正确率 |\n`;
-            
-            // Separator row
-            summaryContent += `|---|`;
-            selectedQList.forEach(() => { summaryContent += `---|`; });
-            summaryContent += `---|---|\n`;
-            
-            // Per-question pass counters (for bottom summary rows)
-            const questionPassCounts = {};
-            selectedQList.forEach(q => { questionPassCounts[q.id] = 0; });
-            let totalPassAll = 0;
-            let totalQuestionsAll = 0;
-            
-            // Data rows: one per round
-            roundsData.forEach((roundData, rIdx) => {
-                const roundNum = rIdx + 1;
-                let roundPass = 0;
-                let roundTotal = selectedQList.length;
-                
-                summaryContent += `| 测试 ${roundNum} | `;
-                selectedQList.forEach(q => {
-                    const res = roundData[q.id];
-                    const status = res ? res.status : 'skipped';
-                    if (status === 'pass') {
-                        summaryContent += `✔ | `;
-                        roundPass++;
-                        questionPassCounts[q.id]++;
-                    } else if (status === 'fail') {
-                        summaryContent += `◯ | `;
-                    } else if (status === 'error') {
-                        summaryContent += `✘ | `;
-                    } else {
-                        summaryContent += `- | `;
-                    }
-                });
-                totalPassAll += roundPass;
-                totalQuestionsAll += roundTotal;
-                
-                const roundAccuracy = roundTotal > 0 ? ((roundPass / roundTotal) * 100).toFixed(1) : '0.0';
-                summaryContent += `**${roundPass}/${roundTotal}** | **${roundAccuracy}%** |\n`;
-            });
-            
-            // Summary row 1: 做对次数 (pass count per question)
-            const overallAccuracy = totalQuestionsAll > 0 ? ((totalPassAll / totalQuestionsAll) * 100).toFixed(1) : '0.0';
-            summaryContent += `| **做对次数** | `;
-            selectedQList.forEach(q => {
-                summaryContent += `${questionPassCounts[q.id]}/${totalRounds} | `;
-            });
-            summaryContent += `**${totalPassAll}/${totalQuestionsAll}** | **${overallAccuracy}%** |\n`;
-            
-            // Summary row 2: 每题正确率
-            summaryContent += `| **每题正确率** | `;
-            selectedQList.forEach(q => {
-                const qAcc = totalRounds > 0 ? ((questionPassCounts[q.id] / totalRounds) * 100).toFixed(1) : '0.0';
-                summaryContent += `${qAcc}% | `;
-            });
-            summaryContent += `**${totalPassAll}/${totalQuestionsAll}** | **${overallAccuracy}%** |\n`;
+            const summaryContent = generateSummaryMarkdown();
             
             try {
                 updateDbStatus("正在生成并打包测试结果 ZIP...", "status-yellow");
-                const zip = new JSZip();
-                
-                // Add summary.md
-                zip.file("summary.md", summaryContent);
-                
-                // Add CSV for each round
-                roundsData.forEach((roundData, rIdx) => {
-                    const roundNum = rIdx + 1;
-                    const csvContent = generateCSVForRound(roundNum, roundData);
-                    zip.file(`trace_round_${roundNum}.csv`, csvContent);
+                const response = await fetch('/download_zip', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        batchId: currentBatchId,
+                        summary: summaryContent
+                    })
                 });
                 
-                // Generate ZIP file blob
-                const blob = await zip.generateAsync({ type: "blob" });
-                const url = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `${currentBatchId}.zip`;
-                document.body.appendChild(a);
-                a.click();
-                a.remove();
-                window.URL.revokeObjectURL(url);
-                updateDbStatus("导出详细测试日志成功！", "status-green");
+                if (response.ok) {
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `${currentBatchId}.zip`;
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                    window.URL.revokeObjectURL(url);
+                    updateDbStatus("ZIP 压缩包成功下载到本地！", "status-green");
+                } else {
+                    const err = await response.json();
+                    alert(`打包下载失败: ${err.message}`);
+                    updateDbStatus(`打包下载失败: ${err.message}`, "status-red");
+                }
             } catch(e) {
                 alert(`导出失败: ${e.message}`);
                 updateDbStatus(`导出失败: ${e.message}`, "status-red");
             }
-        }
-
-function generateCSVForRound(roundNum, roundData) {
-            const headers = [
-                "Round (轮次)", "Model Name (模型名称)", "Start Time (开始时间)", "End Time (结束时间)",
-                "Question ID (题号)", "Difficulty (难度)", "Question (题目描述)", 
-                "Status (状态)", "Attempts (尝试次数)", "Input Tokens (输入Tokens)", "Output Tokens (输出Tokens)", 
-                "Expected Row Count (期望行数)", "Actual Row Count (实际行数)",
-                "Expected Column Count (期望列数)", "Actual Column Count (实际列数)",
-                "Generated SQL (生成的SQL)", "Error Message (错误信息)", "Full Dialogue Trace (完整对话轨迹)"
-            ];
-            
-            const rows = [headers];
-            
-            Object.values(roundData).forEach(res => {
-                const q = questionsList.find(item => item.id === res.id);
-                if (!q) return;
-                
-                const check = res.check || {};
-                
-                let traceTextParts = [];
-                if (res.history) {
-                    res.history.forEach((step, sIdx) => {
-                        traceTextParts.push(`--- 回合 ${sIdx + 1} ---`);
-                        const resp = step.response || {};
-                        if (resp.reasoning) {
-                            traceTextParts.push(`[思维链路]\n${resp.reasoning}`);
-                        }
-                        if (resp.toolCall) {
-                            const tc = resp.toolCall;
-                            const fn = tc.function || {};
-                            const tcName = tc.name || fn.name;
-                            const tcArgs = tc.arguments || fn.arguments;
-                            traceTextParts.push(`[工具调用] ${tcName} with args: ${JSON.stringify(tcArgs)}`);
-                        } else if (resp.content) {
-                            traceTextParts.push(`[助手输出]\n${resp.content}`);
-                        }
-                        if (step.result) {
-                            traceTextParts.push(`[执行结果]\n${step.result}`);
-                        } else if (step.error) {
-                            traceTextParts.push(`[执行报错]\n${step.error}`);
-                        }
-                    });
-                }
-                const fullTraceStr = traceTextParts.join("\n\n");
-                
-                const row = [
-                    `Round ${roundNum}`,
-                    benchmarkModelName,
-                    benchmarkStartTime || '-',
-                    benchmarkEndTime || new Date().toLocaleString(),
-                    `Q${res.id}`,
-                    q.difficulty,
-                    q.question,
-                    res.status,
-                    res.attempts || 0,
-                    res.inputTokens || 0,
-                    res.outputTokens || 0,
-                    q.row_count,
-                    check.actualRowCount ?? "",
-                    q.columns.length,
-                    check.actualColumnCount ?? "",
-                    res.generatedSql || "",
-                    res.status === 'error' ? (res.error || (res.check ? res.check.error : '未知错误')) : '',
-                    fullTraceStr
-                ];
-                rows.push(row);
-            });
-            
-            const escapeCSVCell = (val) => {
-                if (val === null || val === undefined) return "";
-                let str = String(val);
-                if (str.includes('"') || str.includes(',') || str.includes('\n') || str.includes('\r')) {
-                    return '"' + str.replace(/"/g, '""') + '"';
-                }
-                return str;
-            };
-            
-            return rows.map(r => r.map(escapeCSVCell).join(",")).join("\r\n");
         }
 
                 function initTimerWorker() {
@@ -2550,7 +2348,6 @@ function renderRoundMatrix() {
             currentBatchId = 'trace_' + getLocalTimestamp();
             
             // Clear previous evaluation histories
-            allRoundsResults = [];
             multiRoundMatrix = [];
             
             // Disable config & filters editing
@@ -2749,8 +2546,6 @@ function renderRoundMatrix() {
                 // Automatically save trace to local CSV on round completion
                 await saveTraceToServer(false, r, totalRounds);
 
-                allRoundsResults.push(JSON.parse(JSON.stringify(runResults)));
-
                 if (r < totalRounds) {
                     let timeLeft = 5;
                     while (timeLeft > 0 && !abortController.signal.aborted) {
@@ -2818,7 +2613,6 @@ function renderRoundMatrix() {
         function resetBenchmark() {
             stopBenchmark();
             runResults = {};
-            allRoundsResults = [];
             multiRoundMatrix = [];
             currentRoundNum = 1;
             currentQuestionIndex = 0;
