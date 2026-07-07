@@ -71,6 +71,16 @@
             line-height: 1.1;
             color: var(--text-color);
         }
+        .header-title .version-tag {
+            display: inline-block;
+            margin-left: 10px;
+            font-size: 0.48em;
+            font-weight: 600;
+            line-height: 1;
+            color: var(--text-muted);
+            vertical-align: baseline;
+            white-space: nowrap;
+        }
 
         .header-title p {
             margin: 0;
@@ -733,7 +743,7 @@
 
     <header>
         <div class="header-title">
-            <h1>LLM SQL Local Benchmark</h1>
+            <h1>LLM SQL Local Benchmark <span class="version-tag">V1.1 (GitHub-JSZip)</span></h1>
             <p>1:1 本地独立测试模块 · AdventureWorks 数据集</p>
         </div>
         <div id="db-status" class="system-status status-yellow">
