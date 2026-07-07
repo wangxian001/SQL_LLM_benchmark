@@ -44,24 +44,25 @@ class CORSHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                     total_rounds = None
                     batch_id = None
                 
-                # Generate filename: {batch_id}[_round_X].csv
+                # Generate filename and target directory
+                trace_log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "trace_log")
                 if batch_id:
+                    batch_dir = os.path.join(trace_log_dir, batch_id)
                     if round_num is not None:
-                        filename = f"{batch_id}_round_{round_num}.csv"
+                        filename = f"round_{round_num}.csv"
                     else:
-                        filename = f"{batch_id}.csv"
+                        filename = "trace.csv"
                 else:
+                    batch_dir = trace_log_dir
                     now = datetime.now().strftime("%Y%m%d_%H%M%S")
                     if round_num is not None:
                         filename = f"test_trace_{now}_round_{round_num}.csv"
                     else:
                         filename = f"test_trace_{now}.csv"
                     
-                # Create trace_log directory if not exists
-                trace_log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "trace_log")
-                if not os.path.exists(trace_log_dir):
-                    os.makedirs(trace_log_dir)
-                filepath = os.path.join(trace_log_dir, filename)
+                if not os.path.exists(batch_dir):
+                    os.makedirs(batch_dir)
+                filepath = os.path.join(batch_dir, filename)
                 
                 # Write CSV with utf-8-sig to support Chinese characters in Excel
                 with open(filepath, mode='w', newline='', encoding='utf-8-sig') as f:
@@ -135,6 +136,41 @@ class CORSHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(json.dumps({"status": "error", "message": str(e)}).encode('utf-8'))
                 
+        elif self.path == '/save_summary':
+            try:
+                payload = json.loads(post_data.decode('utf-8'))
+                batch_id = payload.get('batchId')
+                summary_content = payload.get('summary', '')
+                
+                if not batch_id or not summary_content:
+                    self.send_response(400)
+                    self.end_headers()
+                    self.wfile.write(b"Missing batchId or summary")
+                    return
+                
+                trace_log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "trace_log")
+                batch_dir = os.path.join(trace_log_dir, batch_id)
+                if not os.path.exists(batch_dir):
+                    os.makedirs(batch_dir)
+                    
+                filename = "summary.md"
+                filepath = os.path.join(batch_dir, filename)
+                
+                with open(filepath, mode='w', encoding='utf-8') as f:
+                    f.write(summary_content)
+                
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"status": "success", "filename": filename, "path": filepath}).encode('utf-8'))
+                print(f"Successfully saved summary to: {filepath}")
+            except Exception as e:
+                print(f"Error handling save_summary POST: {e}")
+                self.send_response(500)
+                self.send_header('Content-Type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"status": "error", "message": str(e)}).encode('utf-8'))
+                
         elif self.path == '/download_zip':
             try:
                 payload = json.loads(post_data.decode('utf-8'))
@@ -151,20 +187,26 @@ class CORSHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
                 import zipfile
                 
                 trace_log_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "trace_log")
+                batch_dir = os.path.join(trace_log_dir, batch_id)
                 
                 # Create an in-memory zip file
                 zip_buffer = io.BytesIO()
                 with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
-                    # Write summary.md
-                    if summary_content:
-                        zip_file.writestr("summary.md", summary_content)
-                        
-                    # Find all files in trace_log_dir starting with batch_id
-                    if os.path.exists(trace_log_dir):
-                        for file_name in os.listdir(trace_log_dir):
-                            if file_name.startswith(batch_id) and file_name.endswith('.csv'):
-                                file_path = os.path.join(trace_log_dir, file_name)
+                    # If batch directory exists, pack everything inside it
+                    if os.path.exists(batch_dir):
+                        for file_name in os.listdir(batch_dir):
+                            file_path = os.path.join(batch_dir, file_name)
+                            if os.path.isfile(file_path):
                                 zip_file.write(file_path, file_name)
+                    else:
+                        # Fallback for old style structure or pure client-side payloads
+                        if summary_content:
+                            zip_file.writestr("summary.md", summary_content)
+                        if os.path.exists(trace_log_dir):
+                            for file_name in os.listdir(trace_log_dir):
+                                if file_name.startswith(batch_id) and file_name.endswith('.csv'):
+                                    file_path = os.path.join(trace_log_dir, file_name)
+                                    zip_file.write(file_path, file_name)
                 
                 zip_data = zip_buffer.getvalue()
                 

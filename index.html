@@ -1056,7 +1056,18 @@
         let roundPausedStartTime = 0;
         let inspectorExpanded = false;
         let multiRoundMatrix = []; // Array of round records
-        let currentBatchId = 'test_trace_' + new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14); // Unique ID for the current benchmark run session
+        function getLocalTimestamp() {
+            const now = new Date();
+            const YYYY = now.getFullYear();
+            const MM = String(now.getMonth() + 1).padStart(2, '0');
+            const DD = String(now.getDate()).padStart(2, '0');
+            const HH = String(now.getHours()).padStart(2, '0');
+            const mm = String(now.getMinutes()).padStart(2, '0');
+            const ss = String(now.getSeconds()).padStart(2, '0');
+            return `${YYYY}${MM}${DD}${HH}${mm}${ss}`;
+        }
+
+        let currentBatchId = 'trace_' + getLocalTimestamp(); // Unique ID for the current benchmark run session
         let allRoundsResults = []; // Array of runResults copies for each round
         let benchmarkModelName = '-';
         let benchmarkStartTime = null;
@@ -2260,7 +2271,7 @@ First row: ${firstRowStr}`;
             document.getElementById('btn-save-trace').disabled = true;
             
             // Generate a fresh unique batch ID for this new run session
-            currentBatchId = 'test_trace_' + new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14);
+            currentBatchId = 'trace_' + getLocalTimestamp();
             
             // Clear previous evaluation histories
             multiRoundMatrix = [];
