@@ -46,9 +46,11 @@ A client-side LLM SQL generation benchmark dashboard utilizing **DuckDB-Wasm** i
    - Enable GitHub Pages on your repository (`main` branch root folder).
    - Go to `https://<your_username>.github.io/SQL_LLM_benchmark/`.
 2. **Locally/Privately (Intranet Server)**:
-   - Prepare Database Tables: `python download_tables.py`
-   - Start Server: `python run_server.py`
-   - Access `http://localhost:8000/sql_benchmark.html`.
+   * Please refer to the detailed local deployment guide: 👉 **[本地部署操作说明.md (Local Deployment Guide)](本地部署操作说明.md)** 👈.
+   * Core steps:
+     1. `python download_tables.py`
+     2. `python run_server.py`
+     3. Access `http://localhost:8000/sql_benchmark.html`
 
 ---
 
@@ -84,8 +86,9 @@ A client-side LLM SQL generation benchmark dashboard utilizing **DuckDB-Wasm** i
    * 在仓库设置的 **Settings -> Pages** 中，将 Source 设置为 `Deploy from a branch` 并选择 `main` 分支根目录。
    * 保存后，即可通过 `https://<您的用户名>.github.io/SQL_LLM_benchmark/` 访问静态页面并运行测试。
 2. **本地/局域网私有化运行（推荐）**：
-   * 确保本地安装了 Python。
-   * 首先下载并初始化数据集：`python download_tables.py`
-   * 启动本地 HTTP 服务：`python run_server.py`
-   * 浏览器打开：`http://localhost:8000/sql_benchmark.html`。
-   * 注意：实跑必须用服务器:python run_server.py → 访问 http://192.168.XX.XXX:8000/sql_benchmark.html
+   * 本项目提供了极其详尽的本地运行步骤、日志存盘逻辑及常见问题排查说明。
+   * 请直接阅读专门的部署指南文件：👉 **[本地部署操作说明.md](本地部署操作说明.md)** 👈。
+   * 核心三步：
+     1. 下载数据集：`python download_tables.py`
+     2. 启动服务：`python run_server.py`
+     3. 浏览器访问：`http://localhost:8000/sql_benchmark.html` (或 `http://192.168.XX.XXX:8000/sql_benchmark.html` 进行局域网内其他设备访问)
