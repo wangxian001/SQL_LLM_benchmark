@@ -1,6 +1,12 @@
 # LLM SQL Local Benchmark Dashboard 
 (大模型 SQL 评测面板)
-<img width="2340" height="1032" alt="image" src="https://github.com/user-attachments/assets/06eb6d06-234f-45a1-bfe0-f625aebfd7e8" />
+<img width="2510" height="1122" alt="image" src="https://github.com/user-attachments/assets/22798e18-cbb9-49d9-8c5b-86ea0675ac71" />
+
+
+
+<img width="2332" height="1055" alt="image" src="https://github.com/user-attachments/assets/83bc4c60-782b-4186-9352-765dd4b0ab94" />
+
+
 
 [English](#english) | [中文说明](#中文说明)
 
