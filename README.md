@@ -100,11 +100,12 @@ A client-side LLM SQL generation benchmark dashboard utilizing **DuckDB-Wasm** i
      1. 下载数据集：`python download_tables.py`
      2. 启动服务：`python run_server.py`
      3. 浏览器访问：`http://localhost:8000/sql_benchmark.html` (或 `http://192.168.XX.XXX:8000/sql_benchmark.html` 进行局域网内其他设备访问)
-    
+ <img width="2545" height="740" alt="QQ_1783517804304" src="https://github.com/user-attachments/assets/c07d4d0e-ca67-43b9-b416-561cf6c20a88" />
+   
 <img width="2308" height="935" alt="image" src="https://github.com/user-attachments/assets/b1a77014-1be3-42c9-b48c-9a25694aee05" />
 
 <img width="2617" height="985" alt="37f5cbcb2a597d780babe24f748851e3" src="https://github.com/user-attachments/assets/5244d4b1-42a3-4dd8-a590-c06054525f07" />
 
 <img width="2275" height="982" alt="ec0c4f27b9b8e689da7ba0865b916d2f" src="https://github.com/user-attachments/assets/943a1225-c82d-4b07-a34b-4ec92a030066" />
-GPT-5.5测4轮，cost RMB2.2
-opus-4.8，，测3轮，cost RMB11.3
+GPT-5.5测4轮，cost RMB2.2；
+opus-4.8测3轮，cost RMB11.3
