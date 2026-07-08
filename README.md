@@ -100,5 +100,6 @@ A client-side LLM SQL generation benchmark dashboard utilizing **DuckDB-Wasm** i
      2. 启动服务：`python run_server.py`
      3. 浏览器访问：`http://localhost:8000/sql_benchmark.html` (或 `http://192.168.XX.XXX:8000/sql_benchmark.html` 进行局域网内其他设备访问)
     
-<img width="2500" height="1127" alt="image" src="https://github.com/user-attachments/assets/f1589f64-03f2-4ed8-95e2-ecb2d2beecad" />
+<img width="2308" height="935" alt="image" src="https://github.com/user-attachments/assets/b1a77014-1be3-42c9-b48c-9a25694aee05" />
+
 
