@@ -21,6 +21,7 @@
 
 ## 使用方式二： 🚀 GitHub 拉取本仓库代码本地部署 <推荐>
 **[👉 拉取本仓库代码本地部署 / Click here to local deployment ](https://github.com/wangxian001/SQL_LLM_benchmark)**
+
 注意：windows/linux均可；使用: python run_server.py 启动服务 → 本机/局域网内访问 http://ip:8000/sql_benchmark.html
 ---
 <img width="3263" height="1705" alt="image" src="https://github.com/user-attachments/assets/3f553304-b1c2-4edc-8831-bc56fe4393e9" />
