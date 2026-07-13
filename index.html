@@ -1595,7 +1595,11 @@
 
             <li>测试完成后，可以<strong>导出过程日志</strong>到本地保存。</li>
 
-        </ol>
+        
+
+            <li><strong>新增：重置前缀缓存功能</strong>，适用于 vLLM 推理，在每道题开始前锁定当前 prefix-cache，避免数据交叉污染。</li>
+
+</ol>
 
     </section>
 
@@ -1697,13 +1701,11 @@
 
         <div class="config-grid" style="margin-top: 4px; border-top: 1px dashed rgba(28, 130, 173, 0.15); padding-top: 16px;">
 
-            <div class="input-group">
+            <div class="input-group" style="display: flex; flex-direction: row; align-items: center; gap: 8px;">
 
-                <label>Auto Reset Prefix cache</label>
+                <label class="checkbox-item" style="white-space: nowrap;" title="启用后通过vLLM cache_salt隔离题间前缀缓存：同一道题的Agent多轮调用及重试复用同一salt，下一题更换salt；不会调用全局reset接口。">
 
-                <label class="checkbox-item" title="启用后通过vLLM cache_salt隔离题间前缀缓存：同一道题的Agent多轮调用及重试复用同一salt，下一题更换salt；不会调用全局reset接口。">
-
-                    <input type="checkbox" id="cache-salt-each-question"> 每道题重置前缀缓存（API地址为直连原生 vLLM 时勾选）
+                    <input type="checkbox" id="cache-salt-each-question"> Auto Reset Prefix Cache（重置前缀缓存，当API地址为直连VLLM时勾选）
 
                 </label>
 
