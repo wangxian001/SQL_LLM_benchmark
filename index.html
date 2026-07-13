@@ -1,6 +1,6 @@
 <!-- Version: 2026-07-14_0035 | 100% aligned with 150 version except JSZip and github.io path fallbacks -->
 
-<!-- Version: 2026-07-13T20:34:46+08:00  V1.1 (GitHub-JSZip)
+<!-- Version: 2026-07-14T00:42:00+08:00  V1.1 (GitHub-JSZip)
 
      本版对齐原站 sql-benchmark.nicklothian.com 默认测试口径:
 
@@ -1078,6 +1078,40 @@
             font-family: var(--font-sans);
 
         }
+        .diff-report {
+            font-size: 12.5px;
+            font-family: var(--font-sans);
+            line-height: 1.6;
+        }
+        .diff-item {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: baseline;
+            gap: 6px;
+            padding: 4px 0;
+            border-bottom: 1px solid rgba(28, 130, 173, 0.1);
+            font-size: 12.5px;
+        }
+        .diff-item:last-child {
+            border-bottom: none;
+        }
+        .diff-label {
+            font-weight: 600;
+            color: var(--text-color);
+            min-width: 160px;
+            font-size: 12px;
+        }
+        .diff-values-list {
+            font-size: 12px;
+            font-family: var(--font-mono);
+            margin: 4px 0 4px 12px;
+            padding: 0;
+            list-style: none;
+        }
+        .diff-values-list li {
+            padding: 2px 0;
+        }
+
 
 
 
@@ -2020,7 +2054,7 @@
 
                     <!-- Query execution preview -->
 
-                    <div class="section-title">结果预览 (前 5 行)</div>
+                    <div class="section-title">结果预览 (前 10 行)</div>
 
                     <div class="result-table-container">
 
@@ -6722,7 +6756,10 @@ function renderRoundMatrix() {
 
             if (res && res.generatedSql && res.status !== 'error') {
 
-                runQueryPreview(res.generatedSql);
+                runQueryPreview(res.generatedSql).catch(err => {
+                    tableHead.innerHTML = '<tr><th>预览查询出错</th></tr>';
+                    tableBody.innerHTML = `<tr><td style="color:var(--danger)">无法执行预览查询: ${err.message}</td></tr>`;
+                });
 
             } else {
 
@@ -6784,7 +6821,7 @@ function renderRoundMatrix() {
 
             try {
 
-                const preview = await conn.query(`SELECT * FROM (${sql}) LIMIT 5`);
+                const preview = await conn.query(`SELECT * FROM (${sql}) LIMIT 10`);
 
                 const columns = preview.schema.fields.map(f => f.name);
 
