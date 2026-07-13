@@ -2995,7 +2995,7 @@ First row: ${firstRowStr}`;
 
                 if (message?.tool_calls?.length > 0) {
 
-                    return { message, usage };
+                    return { message, usage, cacheSaltApplied: !!cacheSalt };
 
                 }
 
@@ -3148,6 +3148,11 @@ First row: ${firstRowStr}`;
                         }
 
                     );
+
+                    // Log cache_salt confirmation on first successful call per question
+                    if (res.cacheSaltApplied && stepNo === 1) {
+                        onLog(`cache_salt ✓ (salt: ${cacheSalt.substring(0, 12)}...)`, "success");
+                    }
 
 
 
