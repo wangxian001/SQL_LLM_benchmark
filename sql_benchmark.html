@@ -1,28 +1,4 @@
-<!-- Version: 2026-07-14T00:42:00+08:00  V1.1（202607072055）
-
-     本版对齐原站 sql-benchmark.nicklothian.com 默认测试口径:
-
-     (1) 无tool_call: 原站"无状态重发"逻辑(maxNoToolCallRetries=2,同一请求最多3次,不污染上下文,每次计入20次调用预算,3次仍无则判error);
-
-     (2) SQL报错重试默认 1->2 (对齐 runBenchmark 默认 maxRetries=2);
-
-     (3) DuckDB-Wasm 1.28.0->1.32.0 (对齐原站 package-lock 实际版本);
-
-     (4) max_tokens/temperature 默认 2048/0.1 (可改, 默认即对齐);
-
-     (5) Q24 参考SQL别名 o->so (不参与评分, 与原站页面一致);
-
-     (6) vLLM前缀缓存实验改用可选cache_salt题间隔离；同题Agent调用共享salt，跨题换salt，不再调用/reset_prefix_cache;
-
-     (7) 修复模型/API错误未写入runResults，导致CSV仅显示“未知错误”的日志缺失问题;
-
-     (8) 修复summary逐轮完成数和正确率误用全部25题作分母，改为仅统计已选题目。
-
-     (9) cache_salt模式默认关闭，仅适用于直连原生vLLM；服务明确拒绝该字段时中止测试且不静默降级。
-
-     另含其它工作线合并的改进: CSV改用registerFileBuffer二进制加载; 超时改用AbortController真正中断在飞请求。 -->
-
-<!-- Description: Replicated LLM SQL Benchmark with DuckDB-Wasm. Changed styling, fonts, buttons, cards, and colors to match the original light-mode theme. Allows users to export all round CSV traces as a ZIP along with a summary markdown file. Displays overall accuracy, includes quick instructions, dynamically resolves table paths, and organizes configurations in two rows. Saves API endpoint, key, model, rounds, and cache-salt preference to this browser's localStorage after a benchmark starts. -->
+<!-- Version: 2026-07-14T01:00:00+08:00  V1.2<!-- Description: Replicated LLM SQL Benchmark with DuckDB-Wasm. Changed styling, fonts, buttons, cards, and colors to match the original light-mode theme. Allows users to export all round CSV traces as a ZIP along with a summary markdown file. Displays overall accuracy, includes quick instructions, dynamically resolves table paths, and organizes configurations in two rows. Saves API endpoint, key, model, rounds, and cache-salt preference to this browser's localStorage after a benchmark starts. -->
 
 <!DOCTYPE html>
 
@@ -1074,6 +1050,10 @@
             font-family: var(--font-sans);
 
         }
+
+        .dialogue-trace-inner .section-title {
+            color: #9ca3af;
+        }
         .diff-report {
             font-size: 12.5px;
             font-family: var(--font-sans);
@@ -1108,12 +1088,20 @@
             padding: 2px 0;
         }
 
+        .dialogue-trace-inner .diff-report,
+        .dialogue-trace-inner .diff-item,
+        .dialogue-trace-inner .diff-label {
+            color: #d1d5db;
+        }
+
 
 
 
         .log-section {
 
             background-color: #0d0d12;
+
+            color: #c8ccd0;
 
             border: 1px solid var(--border-color);
 
@@ -1143,7 +1131,7 @@
 
         .log-time {
 
-            color: var(--text-muted);
+            color: #6b7280;
 
             font-size: 11px;
 
@@ -1199,6 +1187,8 @@
 
             white-space: pre-wrap;
 
+            color: #c8ccd0;
+
         }
 
         .log-line.info { color: #1c82ad; }
@@ -1234,6 +1224,8 @@
             overflow: hidden;
 
             background-color: #0c0d12;
+
+            color: #d1d5db;
 
             display: flex;
 
@@ -1278,6 +1270,8 @@
             gap: 14px;
 
             background-color: #060609;
+
+            color: #d1d5db;
 
         }
 
@@ -1977,12 +1971,12 @@
                     <span id="inspector-status-badge"></span>
                     <button id="btn-autoscroll-toggle"
                         onclick="event.stopPropagation(); toggleAutoScroll();"
-                        title="自动跟随当前运行题目（点击暂停）"
+                        title="点击暂停自动滚动，锁定当前查看的题目"
                         style="background: none; border: 1px solid var(--border-color); border-radius: 6px; cursor: pointer; padding: 3px 8px; display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-family: var(--font-sans); color: var(--success); transition: all 0.2s ease;">
                         <svg id="autoscroll-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                             <polygon points="5,3 19,12 5,21"></polygon>
                         </svg>
-                        <span id="autoscroll-label" style="font-weight: 600;">自动跟随</span>
+                        <span id="autoscroll-label" style="font-weight: 600;">暂停滚动</span>
                     </button>
                 </div>
 
@@ -6015,16 +6009,16 @@ function renderRoundMatrix() {
             if (!btn) return;
             if (autoScrollInspector) {
                 btn.classList.remove('paused');
-                btn.title = '自动跟随当前运行题目（点击暂停）';
+                btn.title = '点击暂停自动滚动，锁定当前查看的题目';
                 btn.style.color = 'var(--success)';
                 icon.innerHTML = '<polygon points="5,3 19,12 5,21"></polygon>';
-                label.textContent = '自动跟随';
+                label.textContent = '暂停滚动';
             } else {
                 btn.classList.add('paused');
-                btn.title = '已暂停自动跟随（点击恢复）';
+                btn.title = '点击恢复同步滚动，跟随当前运行题目';
                 btn.style.color = 'var(--warning)';
                 icon.innerHTML = '<rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect>';
-                label.textContent = '已暂停';
+                label.textContent = '同步滚动';
             }
         }
 
