@@ -1972,7 +1972,7 @@
                 <div style="display: flex; align-items: center; gap: 8px;">
                     <span id="inspector-status-badge"></span>
                     <button id="btn-autoscroll-toggle"
-                        onclick="event.stopPropagation(); toggleAutoScroll();"
+                        
                         title="点击暂停自动滚动，锁定当前查看的题目"
                         style="background: none; border: 1px solid var(--border-color); border-radius: 6px; cursor: pointer; padding: 3px 8px; display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-family: var(--font-sans); color: var(--success); transition: all 0.2s ease;">
                         <svg id="autoscroll-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
@@ -5732,6 +5732,15 @@ function renderRoundMatrix() {
 
             document.getElementById('inspector-header').onclick = toggleInspector;
 
+            // Auto-scroll toggle button - use addEventListener with stopPropagation
+            document.getElementById('btn-autoscroll-toggle').addEventListener('click', function(e) {
+                e.stopPropagation();
+                e.preventDefault();
+                console.log('[AutoScroll] Toggle clicked, current state:', autoScrollInspector);
+                toggleAutoScroll();
+                console.log('[AutoScroll] After toggle, new state:', autoScrollInspector);
+            });
+
 
 
             // Bind click on refresh models button
@@ -5999,12 +6008,16 @@ function renderRoundMatrix() {
 
         function toggleAutoScroll() {
             autoScrollInspector = !autoScrollInspector;
+            console.log('[AutoScroll] toggleAutoScroll called, autoScrollInspector =', autoScrollInspector, 'benchmarkRunning =', benchmarkRunning, 'currentQuestionIndex =', currentQuestionIndex);
             updateAutoScrollButton();
             if (autoScrollInspector && benchmarkRunning && !benchmarkPaused) {
                 // Resume: jump to the currently running question
                 if (currentQuestionIndex >= 0 && currentQuestionIndex < questionsList.length) {
                     const currentQ = questionsList[currentQuestionIndex];
-                    if (currentQ) selectQuestion(currentQ.id);
+                    if (currentQ) {
+                        console.log('[AutoScroll] Resuming to question', currentQ.id);
+                        selectQuestion(currentQ.id);
+                    }
                 }
             }
         }
