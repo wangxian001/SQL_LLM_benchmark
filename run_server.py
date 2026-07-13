@@ -1,8 +1,7 @@
-# Version: 2026-07-06T14:36:50+08:00
-# Description: Start a local HTTP server in the current directory with CORS headers, open the page in browser, and handle POST requests to save evaluation traces directly to CSV files inside a trace_log directory, supporting multi-round runs naming convention.
+# Version: 2026-07-13T17:10:00+08:00
+# Description: Threaded local HTTP server with fresh-HTML headers, multi-round trace saving, and automatic summary saving (/save_summary).
 
 import http.server
-import socketserver
 import webbrowser
 import threading
 import sys
@@ -18,6 +17,11 @@ class CORSHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
         self.send_header('Access-Control-Allow-Origin', '*')
         self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
         self.send_header('Access-Control-Allow-Headers', 'X-Requested-With, Content-Type')
+        # HTML contains all benchmark JavaScript; never reuse an old page after a code update.
+        if self.path.partition('?')[0].lower().endswith(('.html', '.htm')):
+            self.send_header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0')
+            self.send_header('Pragma', 'no-cache')
+            self.send_header('Expires', '0')
         super().end_headers()
 
     def do_OPTIONS(self):
@@ -235,10 +239,12 @@ def run_server():
     print(f"Serving files from directory: {script_dir}")
 
     Handler = CORSHTTPRequestHandler
-    socketserver.TCPServer.allow_reuse_address = True
+    http.server.ThreadingHTTPServer.allow_reuse_address = True
+    http.server.ThreadingHTTPServer.daemon_threads = True
 
     try:
-        with socketserver.TCPServer(("", PORT), Handler) as httpd:
+        # DuckDB and dataset requests may overlap; a single-threaded server can block the page.
+        with http.server.ThreadingHTTPServer(("", PORT), Handler) as httpd:
             print(f"Server started at http://localhost:{PORT}/")
             
             url = f"http://localhost:{PORT}/sql_benchmark.html"
