@@ -1,6 +1,9 @@
-<!-- Version: 2026-07-14_0035 | 100% aligned with 150 version except JSZip and github.io path fallbacks -->
-
-<!-- Version: 2026-07-14T01:00:00+08:00  V1.2<!-- Description: Replicated LLM SQL Benchmark with DuckDB-Wasm. Changed styling, fonts, buttons, cards, and colors to match the original light-mode theme. Allows users to export all round CSV traces as a ZIP along with a summary markdown file. Displays overall accuracy, includes quick instructions, dynamically resolves table paths, and organizes configurations in two rows. Saves API endpoint, key, model, rounds, and cache-salt preference to this browser's localStorage after a benchmark starts. -->
+<!-- Version: 2026-07-14T17:23:20+08:00 V1.2 (GitHub-JSZip) -->
+<!-- Description: Replicated LLM SQL Benchmark with DuckDB-Wasm. Changed styling, fonts, buttons, cards, and colors to match the original light-mode theme. Allows users to export all round CSV traces as a ZIP along with a summary markdown file. Displays overall accuracy, includes quick instructions, dynamically resolves table paths, and organizes configurations in two rows. Saves API endpoint, key, model, rounds, and cache-salt preference to this browser's localStorage after a benchmark starts. -->
+<!-- 2026-07-14: Preserve per-round detail snapshots and make heatmap inspection/highlighting round-aware. -->
+<!-- 2026-07-14: Match the inspector question/round label color to the current model label. -->
+<!-- 2026-07-14: Match the inspector question/round label font size to the current model label. -->
+<!-- 2026-07-14: Update the visible application version to V1.2（202607141723）. -->
 
 <!DOCTYPE html>
 
@@ -12,7 +15,7 @@
 
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-    <title>LLM SQL Local Benchmark V1.1 (GitHub-JSZip)</title>
+    <title>LLM SQL Local Benchmark V1.2 (GitHub-JSZip)</title>
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
 
@@ -1023,6 +1026,11 @@
 
         /* Details & Trace Inspector styles */
 
+        .inspector-context-label {
+            color: var(--info);
+            font-size: 12px;
+        }
+
         .details-grid {
 
             display: grid;
@@ -1563,7 +1571,7 @@
 
         <div class="header-title">
 
-            <h1>LLM SQL Local Benchmark <span class="version-tag">V1.1 (GitHub-JSZip)</span></h1>
+            <h1>LLM SQL Local Benchmark <span class="version-tag">V1.2 (GitHub-JSZip)</span></h1>
 
             <p>1:1 本地独立测试模块 · AdventureWorks 数据集</p>
 
@@ -6610,7 +6618,12 @@ function renderRoundMatrix() {
 
 
 
-            document.getElementById('inspector-title').innerText = `测试详情: Q${q.id} / Round ${targetRound}`;
+            const inspectorTitle = document.getElementById('inspector-title');
+            inspectorTitle.textContent = '测试详情: ';
+            const inspectorContextLabel = document.createElement('span');
+            inspectorContextLabel.className = 'inspector-context-label';
+            inspectorContextLabel.textContent = `Q${q.id} / Round ${targetRound}`;
+            inspectorTitle.appendChild(inspectorContextLabel);
 
             document.getElementById('ins-q-id').innerText = `Q${q.id} / Round ${targetRound}`;
 
