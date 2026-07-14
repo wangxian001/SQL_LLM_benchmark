@@ -67,7 +67,8 @@ A client-side LLM SQL generation benchmark dashboard utilizing **DuckDB-Wasm** i
 ## 中文说明
 
 一个基于浏览器内 **DuckDB-Wasm** 运行的纯客户端大模型 SQL 生成局域网评测系统。用户可以通过该面板，针对内置的 25 道 AdventureWorks 数据集测试题，开展多轮次的 SQL 生成与正确率基准测试，并支持 Token 统计及交互 Trace 的一键合并导出。
-<img width="3315" height="1940" alt="image" src="https://github.com/user-attachments/assets/85fcdcaa-a3c3-4d5b-92a0-d11b551b3cb9" />
+<img width="2732" height="1935" alt="aa6d33c16c892721e644d4bc28a3b4f3" src="https://github.com/user-attachments/assets/fbd42257-3fa1-4ab7-ad37-36fb45844ab8" />
+
 
 
 ### 🔗 原项目与参考地址
