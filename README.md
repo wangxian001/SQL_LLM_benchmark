@@ -45,7 +45,7 @@ A client-side LLM SQL generation benchmark dashboard utilizing **DuckDB-Wasm** i
   4. **Flexible Exporter**: 
      - *Backend mode*: Automatically saves per-round CSV files to server directories (`trace_log/`).
      - *Serverless/GitHub Pages mode*: Runs completely in the browser and lets you export a single combined CSV table containing all rounds' details.
-<img width="2732" height="1935" alt="image" src="https://github.com/user-attachments/assets/8cb39f83-aad1-43e5-a7c7-363e3657a6f4" />
+
 
 ### 🛠️ Principles
 1. **DuckDB-Wasm**: Relies on DuckDB-Wasm running fully client-side to query the AdventureWorks dataset.
