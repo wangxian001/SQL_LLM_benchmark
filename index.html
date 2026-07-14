@@ -955,6 +955,18 @@
 
         }
 
+        /* Only a manually clicked heatmap cell receives this focus ring. */
+        .matrix-cell.manual-selected {
+            position: relative;
+            z-index: 2;
+            transform: scale(1.14);
+            box-shadow: 0 0 0 2px #7c3aed, 0 0 0 4px rgba(124, 58, 237, 0.22);
+        }
+
+        .matrix-cell.manual-selected:hover {
+            transform: scale(1.14);
+        }
+
         .matrix-cell.pass { background-color: var(--success); }
 
         .matrix-cell.fail { background: linear-gradient(135deg, #e06060 50%, #f8baba 50%); }
@@ -2215,6 +2227,8 @@
         let runResults = {}; // Map of questionId -> result object
 
         let selectedQuestionId = null;
+        let selectedRoundNum = null;
+        let highlightedHeatmapCell = null;
 
         let abortController = null;
 
@@ -3024,6 +3038,23 @@ First row: ${firstRowStr}`;
         }
 
 
+
+        function cloneQuestionResult(result) {
+            if (!result) return null;
+
+            if (typeof structuredClone === 'function') {
+                return structuredClone(result);
+            }
+
+            // Completed question results are immutable. This fallback supports older
+            // browsers while still detaching the normal JSON-compatible trace data.
+            try {
+                return JSON.parse(JSON.stringify(result));
+            } catch (error) {
+                console.warn('[RoundHistory] Could not deep-clone result; preserving completed object.', error);
+                return result;
+            }
+        }
 
         // Run benchmark question agent loop
 
@@ -4718,9 +4749,9 @@ function renderRoundMatrix() {
 
 
 
-                    const isActive = q.id === selectedQuestionId;
+                    const isManualSelection = highlightedHeatmapCell === `${r}:${q.id}`;
 
-                    const activeStyle = isActive ? 'outline: 2px solid #fff; outline-offset: 1px;' : '';
+                    if (isManualSelection) cellClass += ' manual-selected';
 
 
 
@@ -4746,11 +4777,9 @@ function renderRoundMatrix() {
 
                                  ${cellId}
 
-                                 style="${activeStyle}" 
-
                                  title="${titleText}" 
 
-                                 onclick="selectQuestion(${q.id}, true)">
+                                 onclick="selectQuestion(${q.id}, true, ${r}, true)">
 
                             </div>
 
@@ -4848,21 +4877,13 @@ function renderRoundMatrix() {
 
                 const ratioStr = ranRounds > 0 ? `${correctRounds}/${totalRounds}` : '-';
 
-                const isActive = q.id === selectedQuestionId;
-
-                const activeStyle = isActive ? 'outline: 2px solid #fff; outline-offset: 1px;' : '';
-
-
-
                 totalRow.innerHTML += `
 
                     <td style="text-align:center;">
 
                         <div class="matrix-cell-summary" 
 
-                             style="${activeStyle}" 
-
-                             onclick="selectQuestion(${q.id}, true)">
+                             onclick="selectQuestion(${q.id}, true, currentRoundNum, false)">
 
                              ${ratioStr}
 
@@ -5456,7 +5477,7 @@ function renderRoundMatrix() {
 
                     updateProgress(r, totalRounds, q.id, 1);
 
-                    if (autoScrollInspector) selectQuestion(q.id); // auto select running question
+                    if (autoScrollInspector) selectQuestion(q.id, false, r); // auto select running question
 
                     renderRoundMatrix();
 
@@ -5468,7 +5489,7 @@ function renderRoundMatrix() {
 
                         runResults[q.id].logs.push({ time, msg, level });
 
-                        if (selectedQuestionId === q.id) {
+                        if (selectedQuestionId === q.id && selectedRoundNum === r) {
 
                             appendLogLine(time, msg, level);
 
@@ -5482,7 +5503,7 @@ function renderRoundMatrix() {
 
                         runResults[q.id].history.push(stepRecord);
 
-                        if (selectedQuestionId === q.id) {
+                        if (selectedQuestionId === q.id && selectedRoundNum === r) {
 
                             renderDialogueTraceStep(stepRecord);
 
@@ -5656,7 +5677,7 @@ function renderRoundMatrix() {
 
                     if (autoScrollInspector) {
 
-                        selectQuestion(q.id);
+                        selectQuestion(q.id, false, r);
 
                     }
 
@@ -5676,6 +5697,8 @@ function renderRoundMatrix() {
 
                     results: {},
 
+                    details: {},
+
                     totalDurationMs: currentRoundStartTime > 0 ? (performance.now() - currentRoundStartTime - totalPausedMs) : 0
 
                 };
@@ -5685,6 +5708,10 @@ function renderRoundMatrix() {
                     if (selectedQuestionIds.has(q.id)) {
 
                         roundRecord.results[q.id] = runResults[q.id].status;
+
+                        // Keep the completed round's full inspector data before runResults
+                        // is replaced at the start of the next round.
+                        roundRecord.details[q.id] = cloneQuestionResult(runResults[q.id]);
 
                     } else {
 
@@ -5858,11 +5885,21 @@ function renderRoundMatrix() {
 
             multiRoundMatrix = [];
 
+            selectedQuestionId = null;
+
+            selectedRoundNum = null;
+
+            highlightedHeatmapCell = null;
+
             currentRoundNum = 1;
 
             currentQuestionIndex = 0;
 
             selectedQuestionId = null;
+
+            selectedRoundNum = null;
+
+            highlightedHeatmapCell = null;
 
 
 
@@ -6418,12 +6455,17 @@ function renderRoundMatrix() {
             autoScrollInspector = !autoScrollInspector;
             console.log('[AutoScroll] toggleAutoScroll called, autoScrollInspector =', autoScrollInspector, 'benchmarkRunning =', benchmarkRunning, 'currentQuestionIndex =', currentQuestionIndex);
             updateAutoScrollButton();
+            if (autoScrollInspector) {
+                // Resuming follow mode removes the manual heatmap focus ring.
+                highlightedHeatmapCell = null;
+                renderRoundMatrix();
+            }
             if (autoScrollInspector && benchmarkRunning && !benchmarkPaused) {
                 if (currentQuestionIndex >= 0 && currentQuestionIndex < questionsList.length) {
                     const currentQ = questionsList[currentQuestionIndex];
                     if (currentQ) {
                     console.log('[AutoScroll] Resuming to question', currentQ.id);
-                    selectQuestion(currentQ.id);
+                    selectQuestion(currentQ.id, false, currentRoundNum);
                 }
                 }
             }
@@ -6479,12 +6521,24 @@ function renderRoundMatrix() {
 
 
 
-        function selectQuestion(id, isManual = false) {
+        function getQuestionResult(id, roundNum) {
+            if (roundNum === currentRoundNum && runResults[id]) {
+                return runResults[id];
+            }
+
+            const archivedRound = multiRoundMatrix.find(item => item.roundNum === roundNum);
+            return archivedRound && archivedRound.details ? archivedRound.details[id] || null : null;
+        }
+
+        function selectQuestion(id, isManual = false, roundNum = currentRoundNum, highlightCell = false) {
             if (isManual) {
                 autoScrollInspector = false;
                 updateAutoScrollButton();
             }
+            const targetRound = Number.isFinite(Number(roundNum)) ? Number(roundNum) : currentRoundNum;
             selectedQuestionId = id;
+            selectedRoundNum = targetRound;
+            highlightedHeatmapCell = highlightCell ? `${targetRound}:${id}` : null;
 
 
 
@@ -6506,7 +6560,7 @@ function renderRoundMatrix() {
 
             const q = questionsList.find(item => item.id === id);
 
-            const res = runResults[id];
+            const res = getQuestionResult(id, targetRound);
 
 
 
@@ -6556,9 +6610,9 @@ function renderRoundMatrix() {
 
 
 
-            document.getElementById('inspector-title').innerText = `测试详情: Q${q.id}`;
+            document.getElementById('inspector-title').innerText = `测试详情: Q${q.id} / Round ${targetRound}`;
 
-            document.getElementById('ins-q-id').innerText = `Q${q.id}`;
+            document.getElementById('ins-q-id').innerText = `Q${q.id} / Round ${targetRound}`;
 
             document.getElementById('ins-q-diff').className = `difficulty-badge diff-${q.difficulty}`;
 
