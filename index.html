@@ -4,6 +4,8 @@
 <!-- 2026-07-14: Match the inspector question/round label color to the current model label. -->
 <!-- 2026-07-14: Match the inspector question/round label font size to the current model label. -->
 <!-- 2026-07-14: Update the visible application version to V1.2（202607141723）. -->
+<!-- 2026-07-14T20:48:23+08:00: Align model prompts, result feedback, DuckDB query isolation, timeout lifecycle, and numeric defaults with the upstream benchmark. -->
+<!-- 2026-07-14T21:17:42+08:00: Clear stale Running progress text after a benchmark is manually stopped. -->
 
 <!DOCTYPE html>
 
@@ -16,10 +18,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
     <title>LLM SQL Local Benchmark V1.2 (GitHub-JSZip)</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
-
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 
@@ -1603,7 +1604,7 @@
 
         <ol style="margin: 0; padding-left: 20px; font-size: 13px; color: var(--text-color); line-height: 1.6; font-family: var(--font-sans);">
 
-            <li>只需填写：<strong>API 接口地址</strong>（格式如：<code>http://your-server-ip:8000/v1/chat/completions</code>）和 <strong>API 密钥 (API Key)</strong>；</li>
+            <li>只需填写：<strong>API 接口地址</strong>（格式如：<code>http://192.168.88.8:8000/v1/chat/completions</code>）和 <strong>API 密钥 (API Key)</strong>；</li>
 
             <li>点击密钥输入框右侧的<strong>刷新按钮</strong>，在下拉菜单中<strong>选择测试模型</strong>；</li>
 
@@ -2222,8 +2223,6 @@
 
         let db = null;
 
-        let conn = null;
-
         let dbSchema = {};
 
         let benchmarkRunning = false;
@@ -2235,7 +2234,9 @@
         let runResults = {}; // Map of questionId -> result object
 
         let selectedQuestionId = null;
+
         let selectedRoundNum = null;
+
         let highlightedHeatmapCell = null;
 
         let abortController = null;
@@ -2252,8 +2253,6 @@
         let autoScrollInspector = true;
 
         let multiRoundMatrix = [];
-
-        let allRoundsResults = [];
 
         let timerWorker = null; // Array of round records
 
@@ -2289,11 +2288,48 @@
 
         let benchmarkCacheSaltEnabled = false;
 
+        function cloneQuestionResult(result) {
+            if (!result) return null;
+
+            if (typeof structuredClone === 'function') {
+                return structuredClone(result);
+            }
+
+            // Completed question results are immutable. This fallback supports older
+            // browsers while still detaching the normal JSON-compatible trace data.
+            try {
+                return JSON.parse(JSON.stringify(result));
+            } catch (error) {
+                console.warn('[RoundHistory] Could not deep-clone result; preserving completed object.', error);
+                return result;
+            }
+        }
+
 
 
         // Selection State
 
         const selectedQuestionIds = new Set(questionsList.map(q => q.id));
+
+
+
+        // Match the upstream runner: every DuckDB operation gets an isolated
+        // connection so session state cannot leak between questions.
+        async function withDuckDbConnection(callback) {
+
+            const queryConn = await db.connect();
+
+            try {
+
+                return await callback(queryConn);
+
+            } finally {
+
+                await queryConn.close();
+
+            }
+
+        }
 
 
 
@@ -2322,10 +2358,6 @@
                 db = new duckdb.AsyncDuckDB(new duckdb.ConsoleLogger(), worker);
 
                 await db.instantiate(bundle.mainModule, bundle.pthreadWorker);
-
-                conn = await db.connect();
-
-
 
                 updateDbStatus("加载数据集 CSV 文件...", "status-yellow");
 
@@ -2365,7 +2397,11 @@
 
                     await db.registerFileBuffer(vPath, bytes);
 
-                    await conn.query(`CREATE VIEW ${name} AS SELECT * FROM read_csv_auto('${vPath}')`);
+                    await withDuckDbConnection(queryConn =>
+
+                        queryConn.query(`CREATE VIEW ${name} AS SELECT * FROM read_csv_auto('${vPath}')`)
+
+                    );
 
                 }
 
@@ -2373,21 +2409,23 @@
 
                 // Retrieve Database Schema
 
-                const schemaQuery = await conn.query(`
+                const rows = await withDuckDbConnection(async queryConn => {
 
-                    SELECT table_name, column_name, data_type
+                    const schemaQuery = await queryConn.query(`
 
-                    FROM information_schema.columns
+                        SELECT table_name, column_name, data_type
 
-                    WHERE table_schema = 'main'
+                        FROM information_schema.columns
 
-                    ORDER BY table_name, ordinal_position
+                        WHERE table_schema = 'main'
 
-                `);
+                        ORDER BY table_name, ordinal_position
 
+                    `);
 
+                    return schemaQuery.toArray();
 
-                const rows = schemaQuery.toArray();
+                });
 
                 dbSchema = {};
 
@@ -2468,33 +2506,19 @@
         function getSystemPrompt(schema) {
 
             return `You are a SQL query generator for DuckDB.
-
 Generate SQL queries that answer the user's questions using DuckDB SQL syntax.
-
 Make sure you quote all field, column and table names.
-
 Think through the problem step by step before writing the query.
-
-
 
 Here is the database schema:
 
-
-
 ${formatSchema(schema)}
-
-
 
 You have these tools available: run_sql_query(sql) - Execute a SQL query against the DuckDB database.
 
-
-
 Workflow:
-
 - Call run_sql_query with your SQL query. Important: only ever pass SQL to run_sql_query.
-
 - If the query returns an error, call run_sql_query with a corrected query.
-
 - When results look correct, call results_ok.`;
 
         }
@@ -2733,18 +2757,11 @@ Workflow:
 
             return `Query executed successfully. Verify these results match the request.
 
-
-
 If they do, call results_ok.
-
 If they do not, call run_sql_query with a corrected query.
 
-
-
 Returned ${e.numRows} row(s).
-
 Columns: ${e.columns.join(", ")}
-
 First row: ${firstRowStr}`;
 
         }
@@ -2755,45 +2772,49 @@ First row: ${firstRowStr}`;
 
         async function executeSql(sql) {
 
-            const start = performance.now();
+            return await withDuckDbConnection(async queryConn => {
 
-            const result = await conn.query(sql);
+                const start = performance.now();
 
-            const elapsed = ((performance.now() - start) / 1000).toFixed(2);
+                const result = await queryConn.query(sql);
+
+                const elapsed = ((performance.now() - start) / 1000).toFixed(2);
 
 
 
-            const columns = result.schema.fields.map(f => f.name);
+                const columns = result.schema.fields.map(f => f.name);
 
-            const rows = result.toArray().map(r => {
+                const rows = result.toArray().map(r => {
 
-                const obj = {};
+                    const obj = {};
 
-                for (const col of columns) {
+                    for (const col of columns) {
 
-                    const val = r[col];
+                        const val = r[col];
 
-                    obj[col] = val === null || val === undefined ? null : String(val);
+                        obj[col] = val === null || val === undefined ? null : String(val);
 
-                }
+                    }
 
-                return obj;
+                    return obj;
+
+                });
+
+
+
+                return {
+
+                    columns,
+
+                    rows,
+
+                    numRows: rows.length,
+
+                    elapsed
+
+                };
 
             });
-
-
-
-            return {
-
-                columns,
-
-                rows,
-
-                numRows: rows.length,
-
-                elapsed
-
-            };
 
         }
 
@@ -3023,6 +3044,14 @@ First row: ${firstRowStr}`;
 
                 if (message?.tool_calls?.length > 0) {
 
+                    // OpenAI tool calls normally include an id. The upstream client
+                    // synthesizes one for compatible APIs that omit it.
+                    if (!message.tool_calls[0].id) {
+
+                        message.tool_calls[0].id = `call_${Date.now()}`;
+
+                    }
+
                     return { message, usage, cacheSaltApplied: !!cacheSalt };
 
                 }
@@ -3046,23 +3075,6 @@ First row: ${firstRowStr}`;
         }
 
 
-
-        function cloneQuestionResult(result) {
-            if (!result) return null;
-
-            if (typeof structuredClone === 'function') {
-                return structuredClone(result);
-            }
-
-            // Completed question results are immutable. This fallback supports older
-            // browsers while still detaching the normal JSON-compatible trace data.
-            try {
-                return JSON.parse(JSON.stringify(result));
-            } catch (error) {
-                console.warn('[RoundHistory] Could not deep-clone result; preserving completed object.', error);
-                return result;
-            }
-        }
 
         // Run benchmark question agent loop
 
@@ -3126,19 +3138,15 @@ First row: ${firstRowStr}`;
 
 
 
-            const timeoutPromise = new Promise((_, reject) => {
+            // Match the upstream lifecycle: timeout aborts the active request, but
+            // does not detach a still-running DuckDB query from this question.
+            timeoutId = setTimeout(() => {
 
-                timeoutId = setTimeout(() => {
+                didTimeout = true;
 
-                    didTimeout = true;
+                abortQuestion();
 
-                    abortQuestion();
-
-                    reject(new Error("Timeout"));
-
-                }, timeoutMs);
-
-            });
+            }, timeoutMs);
 
 
 
@@ -3347,7 +3355,7 @@ First row: ${firstRowStr}`;
 
                                     onStepResult(stepRecord);
 
-                                    return { generatedSql, queryResult, error, attempts, inputTokens, outputTokens };
+                                    return { generatedSql, queryResult: null, error, attempts, inputTokens, outputTokens };
 
                                 }
 
@@ -3413,17 +3421,17 @@ First row: ${firstRowStr}`;
 
             try {
 
-                return await Promise.race([agentRun(), timeoutPromise]);
+                return await agentRun();
 
             } catch (err) {
 
-                if (didTimeout || err.message === "Timeout") {
+                if (didTimeout) {
 
                     return {
 
                         generatedSql,
 
-                        queryResult,
+                        queryResult: null,
 
                         error: `在 ${timeoutMs / 1000}秒内测试超时`,
 
@@ -3459,7 +3467,7 @@ First row: ${firstRowStr}`;
 
                     generatedSql,
 
-                    queryResult,
+                    queryResult: null,
 
                     error: err.message,
 
@@ -3917,15 +3925,27 @@ First row: ${firstRowStr}`;
 
             // Capture current round results if benchmark stopped early
 
-            let roundsData = [...allRoundsResults];
+            let roundsData = multiRoundMatrix.map(r => r.details);
 
             if (Object.keys(runResults).length > 0) {
 
-                const currentRoundCaptured = roundsData.some((_, idx) => (idx + 1) === currentRoundNum);
+                const currentRoundCaptured = multiRoundMatrix.some(r => r.roundNum === currentRoundNum);
 
                 if (!currentRoundCaptured) {
 
-                    roundsData.push(JSON.parse(JSON.stringify(runResults)));
+                    const currentDetails = {};
+
+                    questionsList.forEach(q => {
+
+                        if (selectedQuestionIds.has(q.id)) {
+
+                            currentDetails[q.id] = cloneQuestionResult(runResults[q.id]);
+
+                        }
+
+                    });
+
+                    roundsData.push(currentDetails);
 
                 }
 
@@ -3965,189 +3985,57 @@ First row: ${firstRowStr}`;
 
             summaryContent += `- **Total Rounds Run (实际运行轮次)**: ${totalRounds}\n`;
 
-            summaryContent += `- **Questions Selected per Round (每轮测试题数)**: ${selectedCount}\n\n`;
+            summaryContent += `- **Total Questions Tested (测试题量)**: ${selectedCount}\n`;
 
+            summaryContent += `- **Prefix Cache Mode (前缀缓存模式)**: ${benchmarkCacheSaltEnabled ? 'vLLM cache_salt per question' : 'Standard OpenAI request'}\n\n`;
 
 
-            // 2. Round-by-Round Metrics Table
 
-            summaryContent += `## Round-by-Round Metrics (各轮测试正确率)\n`;
+            summaryContent += `## Round-by-Round Breakdown (分轮次正确率统计)\n`;
 
-            summaryContent += `| Round (轮次) | Completed (完成数) | Pass (通过数) | Fail (失败数) | Error (错误数) | Accuracy (正确率) | Duration (耗时) |\n`;
+            summaryContent += `| Round (轮次) | Correct Count (做对题量) | Total Tested (测试题量) | Accuracy (正确率) | Duration (耗时) |\n`;
 
-            summaryContent += `| :--- | :--- | :--- | :--- | :--- | :--- | :--- |\n`;
+            summaryContent += `| --- | --- | --- | --- | --- |\n`;
 
 
 
-            roundsData.forEach((roundData, rIdx) => {
+            multiRoundMatrix.forEach(roundRecord => {
 
-                const roundNum = rIdx + 1;
+                let correctCount = 0;
 
-                const results = Object.values(roundData);
+                Object.values(roundRecord.results).forEach(status => {
 
-                const passCount = results.filter(s => s.status === 'pass').length;
-
-                const failCount = results.filter(s => s.status === 'fail').length;
-
-                const errorCount = results.filter(s => s.status === 'error').length;
-
-                const completedCount = passCount + failCount + errorCount;
-
-                const totalCount = results.length;
-
-
-
-                const accuracy = totalCount > 0 ? ((passCount / totalCount) * 100).toFixed(1) + '%' : '0.0%';
-
-
-
-                // Find duration from multiRoundMatrix if available
-
-                const rData = multiRoundMatrix.find(item => item.roundNum === roundNum);
-
-                const durationMin = rData ? (rData.totalDurationMs / 60000).toFixed(1) : '0.0';
-
-
-
-                summaryContent += `| Round ${roundNum} | ${completedCount} / ${totalCount} | ${passCount} | ${failCount} | ${errorCount} | ${accuracy} | ${durationMin} min |\n`;
-
-            });
-
-            summaryContent += `\n`;
-
-
-
-            // 3. Heatmap Matrix (transposed: rows=rounds, columns=questions)
-
-            const selectedQList = questionsList.filter(q => selectedQuestionIds.has(q.id));
-
-
-
-            summaryContent += `## Detailed Heatmap Matrix (每轮测试对错明细表)\n`;
-
-            summaryContent += `> ✔ = Pass (通过)　　◯ = Fail (失败)　　✘ = Error (错误)\n\n`;
-
-
-
-            // Header row: | 测试编号 | Q1 | Q2 | ... | 做对题数 | 正确率 |
-
-            summaryContent += `| 测试编号 | `;
-
-            selectedQList.forEach(q => { summaryContent += `Q${q.id} | `; });
-
-            summaryContent += `做对题数 | 正确率 |\n`;
-
-
-
-            // Separator row
-
-            summaryContent += `|---|`;
-
-            selectedQList.forEach(() => { summaryContent += `---|`; });
-
-            summaryContent += `---|---|\n`;
-
-
-
-            // Per-question pass counters (for bottom summary rows)
-
-            const questionPassCounts = {};
-
-            selectedQList.forEach(q => { questionPassCounts[q.id] = 0; });
-
-            let totalPassAll = 0;
-
-            let totalQuestionsAll = 0;
-
-
-
-            // Data rows: one per round
-
-            roundsData.forEach((roundData, rIdx) => {
-
-                const roundNum = rIdx + 1;
-
-                let roundPass = 0;
-
-                let roundTotal = selectedQList.length;
-
-
-
-                summaryContent += `| 测试 ${roundNum} | `;
-
-                selectedQList.forEach(q => {
-
-                    const res = roundData[q.id];
-
-                    const status = res ? res.status : 'skipped';
-
-                    if (status === 'pass') {
-
-                        summaryContent += `✔ | `;
-
-                        roundPass++;
-
-                        questionPassCounts[q.id]++;
-
-                    } else if (status === 'fail') {
-
-                        summaryContent += `◯ | `;
-
-                    } else if (status === 'error') {
-
-                        summaryContent += `✘ | `;
-
-                    } else {
-
-                        summaryContent += `- | `;
-
-                    }
+                    if (status === 'pass') correctCount++;
 
                 });
 
-                totalPassAll += roundPass;
+                const acc = selectedCount > 0 ? ((correctCount / selectedCount) * 100).toFixed(1) + '%' : '-';
 
-                totalQuestionsAll += roundTotal;
+                const duration = roundRecord.totalDurationMs ? (roundRecord.totalDurationMs / 1000).toFixed(1) + 's' : '-';
 
-
-
-                const roundAccuracy = roundTotal > 0 ? ((roundPass / roundTotal) * 100).toFixed(1) : '0.0';
-
-                summaryContent += `**${roundPass}/${roundTotal}** | **${roundAccuracy}%** |\n`;
+                summaryContent += `| Round ${roundRecord.roundNum} | ${correctCount} | ${selectedCount} | ${acc} | ${duration} |\n`;
 
             });
 
 
 
-            // Summary row 1: 做对次数 (pass count per question)
+            // If there's an ongoing or aborted round not in multiRoundMatrix
 
-            const overallAccuracy = totalQuestionsAll > 0 ? ((totalPassAll / totalQuestionsAll) * 100).toFixed(1) : '0.0';
+            if (roundsData.length > multiRoundMatrix.length) {
 
-            summaryContent += `| **做对次数** | `;
+                let correctCount = 0;
 
-            selectedQList.forEach(q => {
+                Object.values(roundsData[roundsData.length - 1]).forEach(res => {
 
-                summaryContent += `${questionPassCounts[q.id]}/${totalRounds} | `;
+                    if (res && res.status === 'pass') correctCount++;
 
-            });
+                });
 
-            summaryContent += `**${totalPassAll}/${totalQuestionsAll}** | **${overallAccuracy}%** |\n`;
+                const acc = selectedCount > 0 ? ((correctCount / selectedCount) * 100).toFixed(1) + '%' : '-';
 
+                summaryContent += `| Round ${totalRounds} (未完成/手动终止) | ${correctCount} | ${selectedCount} | ${acc} | - |\n`;
 
-
-            // Summary row 2: 每题正确率
-
-            summaryContent += `| **每题正确率** | `;
-
-            selectedQList.forEach(q => {
-
-                const qAcc = totalRounds > 0 ? ((questionPassCounts[q.id] / totalRounds) * 100).toFixed(1) : '0.0';
-
-                summaryContent += `${qAcc}% | `;
-
-            });
-
-            summaryContent += `**${totalPassAll}/${totalQuestionsAll}** | **${overallAccuracy}%** |\n`;
+            }
 
 
 
@@ -4199,9 +4087,11 @@ First row: ${firstRowStr}`;
 
                 window.URL.revokeObjectURL(url);
 
-                updateDbStatus("导出详细测试日志成功！", "status-green");
+                updateDbStatus("ZIP 压缩包成功下载到本地！", "status-green");
 
-            } catch(e) {
+
+
+            } catch (e) {
 
                 alert(`导出失败: ${e.message}`);
 
@@ -4211,7 +4101,9 @@ First row: ${firstRowStr}`;
 
         }
 
-function generateCSVForRound(roundNum, roundData) {
+
+
+        function generateCSVForRound(roundNum, roundData) {
 
             const headers = [
 
@@ -5173,6 +5065,34 @@ function renderRoundMatrix() {
 
 
 
+        function readNumericConfig(id, fallback, options = {}) {
+
+            const input = document.getElementById(id);
+
+            const raw = input.value.trim();
+
+            const parsed = raw === '' ? NaN : Number(raw);
+
+            const integerValid = !options.integer || Number.isInteger(parsed);
+
+            const minValid = options.min === undefined || parsed >= options.min;
+
+            const maxValid = options.max === undefined || parsed <= options.max;
+
+            if (!Number.isFinite(parsed) || !integerValid || !minValid || !maxValid) {
+
+                input.value = String(fallback);
+
+                return fallback;
+
+            }
+
+            return parsed;
+
+        }
+
+
+
         // Main controller loop
 
         async function startBenchmark() {
@@ -5195,15 +5115,15 @@ function renderRoundMatrix() {
 
             const model = document.getElementById('api-model').value.trim();
 
-            const maxTokens = parseInt(document.getElementById('api-maxtokens').value.trim(), 10) || 2048;
+            const maxTokens = readNumericConfig('api-maxtokens', 2048, { integer: true, min: 256, max: 8192 });
 
-            const temperature = parseFloat(document.getElementById('api-temperature').value.trim()) ?? 0.1;
+            const temperature = readNumericConfig('api-temperature', 0.1, { min: 0, max: 2 });
 
-            const timeoutSec = parseInt(document.getElementById('api-timeout').value.trim(), 10);
+            const timeoutSec = readNumericConfig('api-timeout', 120, { integer: true, min: 10, max: 600 });
 
-            const maxRetries = parseInt(document.getElementById('api-retries').value.trim(), 10);
+            const maxRetries = readNumericConfig('api-retries', 2, { integer: true, min: 0, max: 5 });
 
-            const totalRounds = parseInt(document.getElementById('api-rounds').value.trim(), 10) || 1;
+            const totalRounds = readNumericConfig('api-rounds', 1, { integer: true, min: 1, max: 100 });
 
             const cacheSaltEachQuestion = document.getElementById('cache-salt-each-question').checked;
 
@@ -5299,9 +5219,13 @@ function renderRoundMatrix() {
 
             // Clear previous evaluation histories
 
-            allRoundsResults = [];
-
             multiRoundMatrix = [];
+
+            selectedQuestionId = null;
+
+            selectedRoundNum = null;
+
+            highlightedHeatmapCell = null;
 
 
 
@@ -5465,6 +5389,8 @@ function renderRoundMatrix() {
 
                         generatedSql: '',
 
+                        queryResult: null,
+
                         elapsed: '0.00',
 
                         attempts: 0,
@@ -5609,6 +5535,10 @@ function renderRoundMatrix() {
 
                         runResults[q.id].generatedSql = run.generatedSql || '';
 
+                        // Preserve the exact result that was scored. The inspector must
+                        // never execute model SQL a second time just to render a preview.
+                        runResults[q.id].queryResult = run.queryResult || null;
+
                         runResults[q.id].attempts = run.attempts;
 
                         runResults[q.id].inputTokens = run.inputTokens;
@@ -5739,8 +5669,6 @@ function renderRoundMatrix() {
 
                 await saveTraceToServer(false, r, totalRounds);
 
-                allRoundsResults.push(JSON.parse(JSON.stringify(runResults)));
-
 
 
                 if (r < totalRounds) {
@@ -5861,6 +5789,8 @@ function renderRoundMatrix() {
 
         function stopBenchmark() {
 
+            const wasRunning = benchmarkRunning;
+
             if (abortController) {
 
                 abortController.abort();
@@ -5877,6 +5807,14 @@ function renderRoundMatrix() {
 
             document.getElementById('btn-save-trace').disabled = false;
 
+            if (wasRunning) {
+
+                const totalRounds = readNumericConfig('api-rounds', 1, { integer: true, min: 1, max: 100 });
+
+                updateProgress(currentRoundNum, totalRounds, null, null, '已手动终止');
+
+            }
+
         }
 
 
@@ -5889,15 +5827,7 @@ function renderRoundMatrix() {
 
             runResults = {};
 
-            allRoundsResults = [];
-
             multiRoundMatrix = [];
-
-            selectedQuestionId = null;
-
-            selectedRoundNum = null;
-
-            highlightedHeatmapCell = null;
 
             currentRoundNum = 1;
 
@@ -6376,7 +6306,7 @@ function renderRoundMatrix() {
 
 
 
-        function updateProgress(roundNum = null, totalRounds = null, runningQId = null, attemptNum = null) {
+        function updateProgress(roundNum = null, totalRounds = null, runningQId = null, attemptNum = null, terminalText = '') {
 
             const activeQuestionsCount = selectedQuestionIds.size;
 
@@ -6414,7 +6344,9 @@ function renderRoundMatrix() {
 
             let runningText = "";
 
-            if (runningQId) {
+            // A late async attempt callback may arrive after stopBenchmark() has aborted
+            // the run; never let it restore a stale Running label.
+            if (runningQId && benchmarkRunning) {
 
                 runningText = ` | Running Q${runningQId}`;
 
@@ -6428,9 +6360,11 @@ function renderRoundMatrix() {
 
             }
 
+            const terminalStatusText = terminalText ? ` | ${terminalText}` : "";
 
 
-            document.getElementById('run-progress-text').innerHTML = `${roundText}${completed} / ${activeQuestionsCount} completed${runningText}`;
+
+            document.getElementById('run-progress-text').innerHTML = `${roundText}${completed} / ${activeQuestionsCount} completed${runningText}${terminalStatusText}`;
 
         }
 
@@ -6469,12 +6403,13 @@ function renderRoundMatrix() {
                 renderRoundMatrix();
             }
             if (autoScrollInspector && benchmarkRunning && !benchmarkPaused) {
+                // Resume: jump to the currently running question
                 if (currentQuestionIndex >= 0 && currentQuestionIndex < questionsList.length) {
                     const currentQ = questionsList[currentQuestionIndex];
                     if (currentQ) {
-                    console.log('[AutoScroll] Resuming to question', currentQ.id);
-                    selectQuestion(currentQ.id, false, currentRoundNum);
-                }
+                        console.log('[AutoScroll] Resuming to question', currentQ.id);
+                        selectQuestion(currentQ.id, false, currentRoundNum);
+                    }
                 }
             }
         }
@@ -6837,12 +6772,9 @@ function renderRoundMatrix() {
 
 
 
-            if (res && res.generatedSql && res.status !== 'error') {
+            if (res && res.queryResult && res.status !== 'error') {
 
-                runQueryPreview(res.generatedSql).catch(err => {
-                    tableHead.innerHTML = '<tr><th>预览查询出错</th></tr>';
-                    tableBody.innerHTML = `<tr><td style="color:var(--danger)">无法执行预览查询: ${err.message}</td></tr>`;
-                });
+                renderStoredQueryPreview(res.queryResult);
 
             } else {
 
@@ -6896,85 +6828,73 @@ function renderRoundMatrix() {
 
 
 
-        async function runQueryPreview(sql) {
+        function renderStoredQueryPreview(queryResult) {
 
             const tableHead = document.getElementById('ins-table-head');
 
             const tableBody = document.getElementById('ins-table-body');
 
-            try {
+            const columns = queryResult.columns || [];
 
-                const preview = await conn.query(`SELECT * FROM (${sql}) LIMIT 10`);
-
-                const columns = preview.schema.fields.map(f => f.name);
-
-                const rows = preview.toArray();
+            const rows = (queryResult.rows || []).slice(0, 10);
 
 
 
-                if (columns.length === 0) {
+            if (columns.length === 0) {
 
-                    tableHead.innerHTML = '<tr><th>无字段</th></tr>';
+                tableHead.innerHTML = '<tr><th>无字段</th></tr>';
 
-                    tableBody.innerHTML = '<tr><td>查询返回 0 个字段</td></tr>';
+                tableBody.innerHTML = '<tr><td>查询返回 0 个字段</td></tr>';
 
-                    return;
-
-                }
-
-
-
-                let headTr = '<tr>';
-
-                columns.forEach(c => {
-
-                    headTr += `<th>${c}</th>`;
-
-                });
-
-                headTr += '</tr>';
-
-                tableHead.innerHTML = headTr;
-
-
-
-                if (rows.length === 0) {
-
-                    tableBody.innerHTML = `<tr><td colspan="${columns.length}" style="text-align:center; color:var(--text-muted);">结果集为空 (0 行)</td></tr>`;
-
-                    return;
-
-                }
-
-
-
-                let bodyHtml = '';
-
-                rows.forEach(row => {
-
-                    bodyHtml += '<tr>';
-
-                    columns.forEach(col => {
-
-                        const val = row[col];
-
-                        bodyHtml += `<td>${val === null || val === undefined ? '<span style="color:var(--text-muted)">NULL</span>' : val}</td>`;
-
-                    });
-
-                    bodyHtml += '</tr>';
-
-                });
-
-                tableBody.innerHTML = bodyHtml;
-
-            } catch (err) {
-
-                tableHead.innerHTML = '<tr><th>预览查询出错</th></tr>';
-
-                tableBody.innerHTML = `<tr><td style="color:var(--danger)">无法执行预览查询: ${err.message}</td></tr>`;
+                return;
 
             }
+
+
+
+            let headTr = '<tr>';
+
+            columns.forEach(c => {
+
+                headTr += `<th>${c}</th>`;
+
+            });
+
+            headTr += '</tr>';
+
+            tableHead.innerHTML = headTr;
+
+
+
+            if (rows.length === 0) {
+
+                tableBody.innerHTML = `<tr><td colspan="${columns.length}" style="text-align:center; color:var(--text-muted);">结果集为空 (0 行)</td></tr>`;
+
+                return;
+
+            }
+
+
+
+            let bodyHtml = '';
+
+            rows.forEach(row => {
+
+                bodyHtml += '<tr>';
+
+                columns.forEach(col => {
+
+                    const val = row[col];
+
+                    bodyHtml += `<td>${val === null || val === undefined ? '<span style="color:var(--text-muted)">NULL</span>' : val}</td>`;
+
+                });
+
+                bodyHtml += '</tr>';
+
+            });
+
+            tableBody.innerHTML = bodyHtml;
 
         }
 
