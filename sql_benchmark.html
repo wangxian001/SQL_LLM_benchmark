@@ -6,6 +6,7 @@
 <!-- 2026-07-14: Update the visible application version to V1.2（202607141723）. -->
 <!-- 2026-07-14T20:48:23+08:00: Align model prompts, result feedback, DuckDB query isolation, timeout lifecycle, and numeric defaults with the upstream benchmark. -->
 <!-- 2026-07-14T21:17:42+08:00: Clear stale Running progress text after a benchmark is manually stopped. -->
+<!-- 2026-07-15T18:18:59+08:00: Rename the prefix-cache checkbox label to describe per-question cache isolation. -->
 
 <!DOCTYPE html>
 
@@ -1725,7 +1726,7 @@
 
                 <label class="checkbox-item" style="white-space: nowrap;" title="启用后通过vLLM cache_salt隔离题间前缀缓存：同一道题的Agent多轮调用及重试复用同一salt，下一题更换salt；不会调用全局reset接口。">
 
-                    <input type="checkbox" id="cache-salt-each-question"> Auto Reset Prefix Cache（重置前缀缓存，当API地址为直连VLLM时勾选）
+                    <input type="checkbox" id="cache-salt-each-question"> Auto Reset Prefix Cache（前缀缓存隔离，当API地址为直连VLLM时勾选）
 
                 </label>
 
