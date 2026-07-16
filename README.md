@@ -112,3 +112,11 @@ A client-side LLM SQL generation benchmark dashboard utilizing **DuckDB-Wasm** i
 <img width="2275" height="982" alt="ec0c4f27b9b8e689da7ba0865b916d2f" src="https://github.com/user-attachments/assets/943a1225-c82d-4b07-a34b-4ec92a030066" />
 GPT-5.5测4轮，cost RMB2.2；
 opus-4.8测3轮，cost RMB11.3
+
+
+<img width="2437" height="1121" alt="ad61705de79e42fd1d6c36c74db03b8f" src="https://github.com/user-attachments/assets/485e214b-f38f-46b7-93bf-9c57e765ce0d" />
+<img width="2518" height="1145" alt="5d8b91aba99d0462a4461a9b2cdbdcb4" src="https://github.com/user-attachments/assets/0bb5b5d1-0b92-4ea9-83bc-3cf85a0c870b" />
+<img width="1268" height="495" alt="image" src="https://github.com/user-attachments/assets/b9444cc0-c92b-4a18-8393-920b1edac246" />
+
+
+
