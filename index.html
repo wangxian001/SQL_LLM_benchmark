@@ -9,6 +9,8 @@
 <!-- 2026-08-04T18:45:00+08:00: Host DuckDB-Wasm and Worker files locally to prevent CDN network timeouts and support offline/LAN environments. -->
 <!-- 2026-08-04T18:55:00+08:00: Add focus/blur listeners to api-model input to temporarily clear value on focus to show all datalist options, and restore on cancel. -->
 <!-- 2026-08-04T20:05:00+08:00: Expand Max Tokens limit to 64k (65536) and save Max Tokens, Temperature, and Timeout to localStorage. -->
+<!-- 2026-11-02T09:39:42+08:00: Add an optional reasoning_effort selector (low/medium/high/max), persist it locally, and include it in every model request when selected. -->
+<!-- 2026-11-02T10:15:00+08:00: Port V1.2.5 reasoning_effort selector into GitHub JSZip edition (index.html). -->
 <!-- 2026-07-14T20:48:23+08:00: Align model prompts, result feedback, DuckDB query isolation, timeout lifecycle, and numeric defaults with the upstream benchmark. -->
 <!-- 2026-07-14T21:17:42+08:00: Clear stale Running progress text after a benchmark is manually stopped. -->
 
@@ -22,7 +24,7 @@
 
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-    <title>LLM SQL Local Benchmark V1.2.4 (GitHub-JSZip)</title>
+    <title>LLM SQL Local Benchmark V1.2.5 (GitHub-JSZip)</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
 
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -227,6 +229,36 @@
             grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
 
             gap: 16px;
+
+        }
+
+        .reasoning-options-grid {
+
+            grid-template-columns: minmax(200px, 320px) minmax(0, 1fr);
+
+            align-items: end;
+
+        }
+
+        .reasoning-options-grid .cache-option {
+
+            min-width: 0;
+
+        }
+
+        .reasoning-options-grid .cache-option .checkbox-item {
+
+            white-space: normal;
+
+        }
+
+        @media (max-width: 700px) {
+
+            .reasoning-options-grid {
+
+                grid-template-columns: 1fr;
+
+            }
 
         }
 
@@ -1577,7 +1609,7 @@
 
         <div class="header-title">
 
-            <h1>LLM SQL Local Benchmark <span class="version-tag">V1.2.4 (GitHub-JSZip)</span></h1>
+            <h1>LLM SQL Local Benchmark <span class="version-tag">V1.2.5 (GitHub-JSZip)</span></h1>
 
             <p>1:1 本地独立测试模块 · AdventureWorks 数据集</p>
 
@@ -1727,11 +1759,31 @@
 
         </div>
 
-        <div class="config-grid" style="margin-top: 4px; border-top: 1px dashed rgba(28, 130, 173, 0.15); padding-top: 16px;">
+        <div class="config-grid reasoning-options-grid" style="margin-top: 4px; border-top: 1px dashed rgba(28, 130, 173, 0.15); padding-top: 16px;">
 
-            <div class="input-group" style="display: flex; flex-direction: row; align-items: center; gap: 8px;">
+            <div class="input-group">
 
-                <label class="checkbox-item" style="white-space: nowrap;" title="启用后通过vLLM cache_salt隔离题间前缀缓存：同一道题的Agent多轮调用及重试复用同一salt，下一题更换salt；不会调用全局reset接口。">
+                <label>Reasoning Effort (思考等级)</label>
+
+                <select id="api-reasoning-effort" title="不传时保持官方测试口径；选择后，每一次模型请求都会携带 reasoning_effort。">
+
+                    <option value="">不传（官方口径）</option>
+
+                    <option value="low">LOW</option>
+
+                    <option value="medium">MEDIUM</option>
+
+                    <option value="high">HIGH</option>
+
+                    <option value="max">MAX</option>
+
+                </select>
+
+            </div>
+
+            <div class="input-group cache-option" style="display: flex; flex-direction: row; align-items: center; gap: 8px;">
+
+                <label class="checkbox-item" title="启用后通过vLLM cache_salt隔离题间前缀缓存：同一道题的Agent多轮调用及重试复用同一salt，下一题更换salt；不会调用全局reset接口。">
 
                     <input type="checkbox" id="cache-salt-each-question"> Auto Reset Prefix Cache（前缀缓存隔离，当API地址为直连VLLM时勾选）
 
@@ -2314,6 +2366,8 @@
         let benchmarkEndTime = null;
 
         let benchmarkCacheSaltEnabled = false;
+
+        let benchmarkReasoningEffort = '';
 
         function cloneQuestionResult(result) {
             if (!result) return null;
@@ -2909,7 +2963,7 @@ First row: ${firstRowStr}`;
 
         // exact same request body, matching the original benchmark behavior.
 
-        async function callLLM(endpoint, apiKey, model, systemPrompt, messages, maxTokens, temperature, cacheSalt, signal, onCallAttempt, onTokenUsage) {
+        async function callLLM(endpoint, apiKey, model, systemPrompt, messages, maxTokens, temperature, reasoningEffort, cacheSalt, signal, onCallAttempt, onTokenUsage) {
 
             const formattedMessages = [{ role: "system", content: systemPrompt }];
 
@@ -2988,6 +3042,10 @@ First row: ${firstRowStr}`;
             // This vLLM extension is opt-in; standard OpenAI requests remain unchanged.
 
             if (cacheSalt) body.cache_salt = cacheSalt;
+
+            // Keep the official request shape by default. When explicitly selected,
+            // carry the same reasoning level through every Agent turn and retry.
+            if (reasoningEffort) body.reasoning_effort = reasoningEffort;
 
 
 
@@ -3105,7 +3163,7 @@ First row: ${firstRowStr}`;
 
         // Run benchmark question agent loop
 
-        async function runQuestionBenchmark(question, endpoint, apiKey, model, maxTokens, temperature, cacheSalt, timeoutMs, maxRetries, signal, onLog, onStepResult, onAttempt) {
+        async function runQuestionBenchmark(question, endpoint, apiKey, model, maxTokens, temperature, reasoningEffort, cacheSalt, timeoutMs, maxRetries, signal, onLog, onStepResult, onAttempt) {
 
             const systemPrompt = getSystemPrompt(dbSchema);
 
@@ -3206,6 +3264,8 @@ First row: ${firstRowStr}`;
                         maxTokens,
 
                         temperature,
+
+                        reasoningEffort,
 
                         cacheSalt,
 
@@ -3682,6 +3742,8 @@ First row: ${firstRowStr}`;
 
             summaryContent += `- **Prefix Cache Mode (前缀缓存模式)**: ${benchmarkCacheSaltEnabled ? 'vLLM cache_salt per question' : 'Standard OpenAI request'}\n`;
 
+            summaryContent += `- **Reasoning Effort (思考等级)**: ${benchmarkReasoningEffort ? benchmarkReasoningEffort.toUpperCase() : 'Not sent (official request shape)'}\n`;
+
             summaryContent += `- **Start Time (开始时间)**: ${benchmarkStartTime || '-'}\n`;
 
             summaryContent += `- **End Time (结束时间)**: ${benchmarkEndTime || new Date().toLocaleString()}\n`;
@@ -4014,7 +4076,9 @@ First row: ${firstRowStr}`;
 
             summaryContent += `- **Total Questions Tested (测试题量)**: ${selectedCount}\n`;
 
-            summaryContent += `- **Prefix Cache Mode (前缀缓存模式)**: ${benchmarkCacheSaltEnabled ? 'vLLM cache_salt per question' : 'Standard OpenAI request'}\n\n`;
+            summaryContent += `- **Prefix Cache Mode (前缀缓存模式)**: ${benchmarkCacheSaltEnabled ? 'vLLM cache_salt per question' : 'Standard OpenAI request'}\n`;
+
+            summaryContent += `- **Reasoning Effort (思考等级)**: ${benchmarkReasoningEffort ? benchmarkReasoningEffort.toUpperCase() : 'Not sent (official request shape)'}\n\n`;
 
 
 
@@ -5150,6 +5214,8 @@ function renderRoundMatrix() {
 
             const temperature = readNumericConfig('api-temperature', 0.1, { min: 0, max: 2 });
 
+            const reasoningEffort = document.getElementById('api-reasoning-effort').value;
+
             const timeoutSec = readNumericConfig('api-timeout', 120, { integer: true, min: 10, max: 600 });
 
             const maxRetries = readNumericConfig('api-retries', 2, { integer: true, min: 0, max: 5 });
@@ -5198,6 +5264,8 @@ function renderRoundMatrix() {
 
                 temperature,
 
+                reasoningEffort,
+
                 timeoutSec
 
             );
@@ -5223,6 +5291,8 @@ function renderRoundMatrix() {
             benchmarkModelName = model;
 
             benchmarkCacheSaltEnabled = cacheSaltEachQuestion;
+
+            benchmarkReasoningEffort = reasoningEffort;
 
             benchmarkStartTime = new Date().toLocaleString();
 
@@ -5279,6 +5349,8 @@ function renderRoundMatrix() {
             document.getElementById('api-maxtokens').disabled = true;
 
             document.getElementById('api-temperature').disabled = true;
+
+            document.getElementById('api-reasoning-effort').disabled = true;
 
             document.getElementById('api-timeout').disabled = true;
 
@@ -5492,6 +5564,12 @@ function renderRoundMatrix() {
 
                     }
 
+                    if (reasoningEffort) {
+
+                        logFn(`已请求思考等级 reasoning_effort=${reasoningEffort}.`, "info");
+
+                    }
+
 
 
                     const qStart = performance.now();
@@ -5511,6 +5589,8 @@ function renderRoundMatrix() {
                             maxTokens,
 
                             temperature,
+
+                            reasoningEffort,
 
                             questionCacheSalt,
 
@@ -5781,6 +5861,8 @@ function renderRoundMatrix() {
             document.getElementById('api-maxtokens').disabled = false;
 
             document.getElementById('api-temperature').disabled = false;
+
+            document.getElementById('api-reasoning-effort').disabled = false;
 
             document.getElementById('api-timeout').disabled = false;
 
@@ -7171,7 +7253,7 @@ function renderRoundMatrix() {
 
 
 
-        function saveConfigsToLocalStorage(endpoint, apiKey, model, rounds, cacheSaltEachQuestion, maxTokens, temperature, timeoutSec) {
+        function saveConfigsToLocalStorage(endpoint, apiKey, model, rounds, cacheSaltEachQuestion, maxTokens, temperature, reasoningEffort, timeoutSec) {
 
             const configs = {
 
@@ -7188,6 +7270,8 @@ function renderRoundMatrix() {
                 maxTokens: maxTokens,
 
                 temperature: temperature,
+
+                reasoningEffort: reasoningEffort,
 
                 timeoutSec: timeoutSec
 
@@ -7258,6 +7342,12 @@ function renderRoundMatrix() {
                 if (configs.temperature !== undefined) {
 
                     document.getElementById('api-temperature').value = configs.temperature;
+
+                }
+
+                if (['', 'low', 'medium', 'high', 'max'].includes(configs.reasoningEffort)) {
+
+                    document.getElementById('api-reasoning-effort').value = configs.reasoningEffort;
 
                 }
 
